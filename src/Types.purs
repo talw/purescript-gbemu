@@ -1,14 +1,10 @@
 module Types where
 
+import Data.Sequence
+
 type Z80State =
   { mem :: Mem
   , totalM :: I8
-  }
-
-cleanState :: Z80State
-cleanState = 
-  { mem = cleanMem
-  , totalM = 0
   }
 
 type Mem =
@@ -16,11 +12,7 @@ type Mem =
   , mainMem :: MainMem
   }
 
-cleanMem :: Mem
-cleanMem =
-  { regs = cleanRegs
-  , mainMem = cleanMainMem
-  }
+newtype MainMem = MainMem (Seq I16)
 
 type Regs =
   { pc :: I16
@@ -36,23 +28,29 @@ type Regs =
   , f :: I8
   }
 
-cleanRegs :: Regs
-cleanRegs =
-  { pc = 0
-  , sp = 0
-  , m = 0
-  , t = 0
-  , a = 0
-  , b = 0
-  , c = 0
-  , d = 0
-  , e = 0
-  , h = 0
-  , l = 0
-  , f = 0
-  }
+{--pc, sp, a, b, c, d, e, h, l, f :: Regs -> Number--}
+pc { pc } = pc
+sp { sp } = sp
+a { a } = a
+b { b } = b
+c { c } = c
+d { d } = d
+e { e } = e
+h { h } = h
+l { l } = l
+f { f } = f
+
+{--setA, setB, setC, setD, setE, setH, setL, setF :: Number -> Regs -> Regs--}
+setA x = _ { a = x }
+setB x = _ { b = x }
+setC x = _ { c = x }
+setD x = _ { d = x }
+setE x = _ { e = x }
+setH x = _ { h = x }
+setL x = _ { l = x }
+setF x = _ { f = x }
 
 --NOTE:: If you make these types 'newtype's you gain compile-time safety
 --at the cost of verbosity. Consider doing the change
-type I8 = Number
-type I16 = Number
+type I8 = Int
+type I16 = Int
