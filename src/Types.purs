@@ -29,16 +29,16 @@ type Regs =
   }
 
 {--pc, sp, a, b, c, d, e, h, l, f :: Regs -> Number--}
-pc { pc } = pc
-sp { sp } = sp
-a { a } = a
-b { b } = b
-c { c } = c
-d { d } = d
-e { e } = e
-h { h } = h
-l { l } = l
-f { f } = f
+pc = _.pc
+sp = _.sp
+a  = _.a 
+b  = _.b 
+c  = _.c 
+d  = _.d 
+e  = _.e 
+h  = _.h 
+l  = _.l 
+f  = _.f  
 
 {--setA, setB, setC, setD, setE, setH, setL, setF :: Number -> Regs -> Regs--}
 setA x = _ { a = x }
