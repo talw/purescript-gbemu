@@ -10,15 +10,30 @@ type Z80State =
 type Mem =
   { regs :: Regs
   , mainMem :: MainMem
+  , svdRegs :: SavedRegs
   }
 
+--NOTE; consider turning into a typeclass so that you can hide the
+--underlying type that is used
 newtype MainMem = MainMem (Seq I16)
 
 type Regs =
   { pc :: I16
   , sp :: I16
+  , ime :: Boolean
   , m :: I8
   , a :: I8
+  , b :: I8
+  , c :: I8
+  , d :: I8
+  , e :: I8
+  , h :: I8
+  , l :: I8
+  , f :: I8
+  }
+
+type SavedRegs =
+  { a :: I8
   , b :: I8
   , c :: I8
   , d :: I8

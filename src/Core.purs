@@ -42,6 +42,7 @@ cleanState =
 cleanMem :: Mem
 cleanMem =
   { regs : cleanRegs
+  , svdRegs : cleanSavedRegs
   , mainMem : cleanMainMem
   }
 
@@ -49,8 +50,21 @@ cleanRegs :: Regs
 cleanRegs =
   { pc : 0
   , sp : 0
+  , ime : false
   , m  : 0
   , a  : 0
+  , b  : 0
+  , c  : 0
+  , d  : 0
+  , e  : 0
+  , h  : 0
+  , l  : 0
+  , f  : 0
+  }
+
+cleanSavedRegs :: SavedRegs
+cleanSavedRegs =
+  { a  : 0
   , b  : 0
   , c  : 0
   , d  : 0
