@@ -162,6 +162,63 @@ subI8s x1 x2 = { res , flags }
   res = diff .&. 255
   diff = x1 - x2
 
+-- Boolean operations
+-- ==================
+
+--AND A,R
+andOpRegIntoA :: GetReg -> Regs -> Regs
+andOpRegIntoA = boolOpRegIntoA (.&.)
+
+--OR A,R
+orOpRegIntoA :: GetReg -> Regs -> Regs
+orOpRegIntoA = boolOpRegIntoA (.|.)
+
+--XOR A,R
+xorOpRegIntoA :: GetReg -> Regs -> Regs
+xorOpRegIntoA = boolOpRegIntoA (.^.)
+
+boolOpRegIntoA :: (I8 -> I8 -> I8) -> GetReg -> Regs -> Regs
+boolOpRegIntoA op getReg regs = boolOpXIntoA op (getReg regs) regs
+
+--AND A,(HL)
+andOpHLMemIntoA :: Mem -> Regs
+andOpHLMemIntoA = boolOpHlMemIntoA (.&.)
+
+--OR A,(HL)
+orOpHLMemIntoA :: Mem -> Regs
+orOpHLMemIntoA = boolOpHlMemIntoA (.|.)
+
+--XOR A,(HL)
+xorOpHLMemIntoA :: Mem -> Regs
+xorOpHLMemIntoA = boolOpHlMemIntoA (.^.)
+
+boolOpHlMemIntoA  :: (I8 -> I8 -> I8) -> Mem -> Regs
+boolOpHlMemIntoA op { mainMem, regs } =
+  (boolOpXIntoA op hlMem regs) { m = 2 }
+ where hlMem = rd8 (joinRegs h l regs) mainMem
+
+--AND A,Imm
+andOpImmIntoA :: Mem -> Regs
+andOpImmIntoA  = boolOpImmIntoA (.&.)
+
+--OR A,Imm
+orOpImmIntoA :: Mem -> Regs
+orOpImmIntoA = boolOpImmIntoA (.|.)
+
+--XOR A,Imm
+xorOpImmIntoA :: Mem -> Regs
+xorOpImmIntoA = boolOpImmIntoA (.^.)
+
+boolOpImmIntoA :: (I8 -> I8 -> I8) -> Mem -> Regs
+boolOpImmIntoA op { mainMem, regs } =
+  (boolOpXIntoA op imm regs) {pc = regs.pc + 1, m = 2}
+ where imm = rd8 regs.pc mainMem
+
+boolOpXIntoA :: (I8 -> I8 -> I8) -> I8 -> Regs -> Regs
+boolOpXIntoA op x regs =
+  regs { a = a', f = testZeroFlag a', m = 1 }
+ where a' = (regs.a `op` x) .&. 255
+
 -- Helpers
 -- =======
 
