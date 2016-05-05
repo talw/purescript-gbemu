@@ -78,12 +78,12 @@ addI8s x1 x2 = { res , flags }
 
 --ADD HL,RR
 add2RegsToHL :: GetReg -> GetReg -> Regs -> Regs
-add2RegsToHL getReg1 getReg2 regs =
+add2RegsToHL msByteReg lsByteReg regs =
   regs { h = split.ms, l = split.ls, f = sum.flags, m = 3 } 
  where
   split = splitI16 sum.res
   sum = addI16s hl joinedRegs regs.f
-  joinedRegs = joinRegs getReg1 getReg2 regs
+  joinedRegs = joinRegs msByteReg lsByteReg regs
   hl = joinRegs h l regs
 
 --ADD HL,SP
@@ -218,6 +218,70 @@ boolOpXIntoA :: (I8 -> I8 -> I8) -> I8 -> Regs -> Regs
 boolOpXIntoA op x regs =
   regs { a = a', f = testZeroFlag a', m = 1 }
  where a' = (regs.a `op` x) .&. 255
+
+-- Bit operations
+-- ==============
+
+--CPL
+cmplA :: Regs -> Regs
+cmplA regs = regs { a = a', f = testZeroFlag a' ,m = 1 }
+ where a' = 255 .^. regs.a
+
+--BIT N,R
+testBitNOfReg :: I8 -> GetReg -> Regs -> Regs
+testBitNOfReg n getReg regs = testBitNOfX n (getReg regs) regs
+
+--BIT N,(HL)
+testBitNOfHLMem :: I8 -> GetReg -> Mem -> Regs
+testBitNOfHLMem n getReg { mainMem, regs } =
+  (testBitNOfX n hlMem regs) { m = 3 }
+ where
+  hlMem = rd8 (joinRegs h l regs) mainMem
+
+testBitNOfX :: Int -> I8 -> Regs -> Regs
+testBitNOfX n x regs = regs { f = f', m = 2 }
+ where
+  f' =  setZeroFlag bitTest
+     $  halfCarryFlag
+    .|. (regs.f .&. carryFlag) -- NOTE: should it be 0x1F instead?
+  bitTest = x .&. (1 `shl` n)
+
+--SET N,R
+set1BitNOfReg :: Int -> GetReg -> SetReg
+               -> Regs -> Regs
+set1BitNOfReg = setBitNOfReg true
+
+--RES N,R
+set0BitNOfReg :: Int -> GetReg -> SetReg
+               -> Regs -> Regs
+set0BitNOfReg = setBitNOfReg false
+
+setBitNOfReg :: Boolean -> Int -> GetReg -> SetReg
+               -> Regs -> Regs
+setBitNOfReg setVal n getReg setReg regs = setReg reg' regs { m = 2 }
+ where reg' = setBitNOfX setVal n (getReg regs)
+
+--SET N,(HL)
+set1BitNOfHLMem :: Int -> Mem -> Mem
+set1BitNOfHLMem = setBitNOfHLMem true
+
+--RES N,(HL)
+set0BitNOfHLMem :: Int -> Mem -> Mem
+set0BitNOfHLMem = setBitNOfHLMem false
+
+setBitNOfHLMem :: Boolean -> Int -> Mem -> Mem
+setBitNOfHLMem setVal n mem@{mainMem,regs} =
+  mem { mainMem = mainMem', regs = regs { m = 4 } }
+ where
+  mainMem' = wr8 hl' addr mainMem
+  hl' = setBitNOfX setVal n $ rd8 addr mainMem
+  addr = joinRegs h l regs
+
+setBitNOfX :: Boolean -> Int -> I8 -> I8
+setBitNOfX setVal n x = if setVal
+  then x .|. bitShift
+  else x .&. complement bitShift
+ where bitShift = 1 `shl` n
 
 -- Helpers
 -- =======
