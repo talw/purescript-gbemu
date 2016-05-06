@@ -269,6 +269,60 @@ setBitNOfX setVal n x = if setVal
   else x .&. complement bitShift
  where bitShift = 1 `shl` n
 
+-- Rotations
+-- =========
+
+data Dir = Left | Right
+derive instance eqDir :: Eq Dir
+
+-- RL[C] A, base-opcode
+-- RR[C] A, base-opcode
+rotA :: Dir -> Boolean -> Regs -> Regs
+rotA dir isCarryRot regs = regs { a = rotated.res, f = rotated.flags, m = 1 }
+ where rotated = rotX {dir,isCarryRot,isCB:false} regs.a regs.f
+
+-- RL[C] R, CB-prefix instruction
+-- RR[C] R, CB-prefix instruction
+rotReg :: Dir -> Boolean -> SetReg -> GetReg -> Regs -> Regs
+rotReg dir isCarryRot setReg getReg regs =
+  setReg rotated.res regs { f = rotated.flags, m = 2 }
+ where rotated = rotX {dir,isCarryRot,isCB:true} (getReg regs) regs.f
+
+-- RL[C] (HL)
+-- RR[C] (HL)
+rotHLMem :: Dir -> Boolean -> Mem -> Mem
+rotHLMem dir isCarryRot mem@{mainMem,regs} =
+  mem { mainMem = mainMem', regs = regs { f = rotated.flags, m = 4 } }
+ where
+  mainMem' = wr8 rotated.res addr mainMem
+  addr = joinRegs h l regs
+  rotated = rotX {dir,isCarryRot,isCB:true} (rd8 addr mainMem) regs.f
+
+rotX :: {dir::Dir,isCarryRot::Boolean,isCB::Boolean}
+      -> I8 -> I8 -> { res :: I8, flags :: I8 }
+rotX { dir, isCarryRot, isCB } x oldFlags = { res, flags }
+ where
+  res = 255 .&. (currCarry + (x `shiftFunc` 1))
+  -- RotA basic, use old flags, RotR CB, start fresh with zeroFlag
+  flags = setNewCarry
+    $ if isCB then testZeroFlag res else oldFlags
+  currCarry = if   (not isCarryRot) && (oldFlags .&. carryFlag /= 0)
+                || (isCarryRot      && isNewCarry)
+    then case dir of
+      Left -> 1
+      Right -> 0x80 
+    else 0
+  setNewCarry = if isNewCarry
+    then (carryFlag .|. _)
+    else (cmplCarryFlag .&. _)
+  isNewCarry = x .&. edgeBit /= 0
+  edgeBit = case dir of
+    Left -> 0x80
+    Right -> 1
+  shiftFunc = case dir of
+    Left -> shl
+    Right -> zshr
+
 -- Helpers
 -- =======
 
@@ -284,7 +338,7 @@ restoreRegs svdRegs regs =
        , e = svdRegs.e, f = svdRegs.f, h = svdRegs.h, l = svdRegs.l
        }
 
-joinRegs :: (Regs -> I8) -> (Regs -> I8) -> Regs -> I16
+joinRegs :: GetReg -> GetReg -> Regs -> I16
 joinRegs msByteReg lsByteReg regs = (msByteReg regs `shl` 8) + lsByteReg regs
 
 absI8 :: I8 -> I8
