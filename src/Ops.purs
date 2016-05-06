@@ -232,8 +232,8 @@ testBitNOfReg :: I8 -> GetReg -> Regs -> Regs
 testBitNOfReg n getReg regs = testBitNOfX n (getReg regs) regs
 
 --BIT N,(HL)
-testBitNOfHLMem :: I8 -> GetReg -> Mem -> Regs
-testBitNOfHLMem n getReg { mainMem, regs } =
+testBitNOfHLMem :: I8 -> Mem -> Regs
+testBitNOfHLMem n { mainMem, regs } =
   (testBitNOfX n hlMem regs) { m = 3 }
  where
   hlMem = rd8 (joinRegs h l regs) mainMem
@@ -247,28 +247,14 @@ testBitNOfX n x regs = regs { f = f', m = 2 }
   bitTest = x .&. (1 `shl` n)
 
 --SET N,R
-set1BitNOfReg :: Int -> GetReg -> SetReg
-               -> Regs -> Regs
-set1BitNOfReg = setBitNOfReg true
-
 --RES N,R
-set0BitNOfReg :: Int -> GetReg -> SetReg
+setBitNOfReg :: Boolean -> Int -> SetReg -> GetReg
                -> Regs -> Regs
-set0BitNOfReg = setBitNOfReg false
-
-setBitNOfReg :: Boolean -> Int -> GetReg -> SetReg
-               -> Regs -> Regs
-setBitNOfReg setVal n getReg setReg regs = setReg reg' regs { m = 2 }
+setBitNOfReg setVal n setReg getReg regs = setReg reg' regs { m = 2 }
  where reg' = setBitNOfX setVal n (getReg regs)
 
 --SET N,(HL)
-set1BitNOfHLMem :: Int -> Mem -> Mem
-set1BitNOfHLMem = setBitNOfHLMem true
-
 --RES N,(HL)
-set0BitNOfHLMem :: Int -> Mem -> Mem
-set0BitNOfHLMem = setBitNOfHLMem false
-
 setBitNOfHLMem :: Boolean -> Int -> Mem -> Mem
 setBitNOfHLMem setVal n mem@{mainMem,regs} =
   mem { mainMem = mainMem', regs = regs { m = 4 } }
