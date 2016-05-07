@@ -323,6 +323,44 @@ rotX { dir, isCarryRot, isCB } x oldFlags = { res, flags }
     Left -> shl
     Right -> zshr
 
+-- Shifts
+-- ======
+
+--SLA R
+--SRA R preserve sign
+--SRL R
+shiftReg :: Dir -> Boolean -> SetReg -> GetReg
+         -> Regs -> Regs
+shiftReg dir sign setReg getReg regs =
+  setReg shifted.res regs { f = shifted.flags, m = 2 }
+ where
+  shifted = shiftX dir sign $ getReg regs
+
+shiftMemHL :: Dir -> Boolean -> Mem -> Mem
+shiftMemHL dir sign mem@{mainMem,regs} =
+  mem { mainMem = mainMem', regs = regs { f = shifted.flags, m = 4 } }
+ where
+  mainMem' = wr8 shifted.res addr mainMem
+  shifted = shiftX dir sign $ rd8 addr mainMem
+  addr = joinRegs h l regs
+
+shiftX :: Dir -> Boolean -> I8
+       -> { res::I8, flags::I8 }
+shiftX dir sign x = { res, flags }
+ where
+  res =  (255 .&. _)
+     <<< (if sign && dir == Right then (currCarry + _) else id)
+      $  x `shiftFunc` 1
+  shiftFunc = case dir of
+    Left -> shl
+    Right -> zshr
+  flags = newCarry .|. testZeroFlag res
+  newCarry = if x .&. edgeBit /= 0 then carryFlag else 0
+  currCarry = x .&. 0x80 --sign is only relevant for right shifts
+  edgeBit = case dir of
+    Left -> 0x80
+    Right -> 1
+
 -- Helpers
 -- =======
 
