@@ -2,6 +2,8 @@ module Ops where
 
 import Prelude
 import Data.Int.Bits
+import Data.Maybe
+import Data.Array ((!!)) as A
 
 import Types
 import MainMem
@@ -360,6 +362,85 @@ shiftX dir sign x = { res, flags }
   edgeBit = case dir of
     Left -> 0x80
     Right -> 1
+
+-- Increments / Decrements
+-- =======================
+
+--INC R
+incReg :: GetReg -> SetReg -> Regs -> Regs
+incReg = incDecReg incI8
+
+--DEC R
+decReg :: GetReg -> SetReg -> Regs -> Regs
+decReg = incDecReg decI8
+
+incDecReg :: (I8 -> { res :: I8, carry :: Boolean })
+          -> GetReg -> SetReg -> Regs -> Regs
+incDecReg op getReg setReg regs =
+  setReg inced .res regs {f = testZeroFlag inced.res, m = 1}
+ where
+  inced  = op $ getReg regs
+
+--INC RR
+incRegWithCarry :: GetReg -> GetReg -> SetReg -> SetReg
+                -> Regs -> Regs
+incRegWithCarry = incDecRegWithCarry incI8
+
+--DEC RR
+decRegWithCarry :: GetReg -> GetReg -> SetReg -> SetReg
+                -> Regs -> Regs
+decRegWithCarry = incDecRegWithCarry decI8
+
+--NOTE: consider refactoring to something along the lines of
+--"split2Regs . incI16 . joinRegs", if you have leeway, performance-wise.
+incDecRegWithCarry :: (I8 -> { res :: I8, carry :: Boolean })
+          -> GetReg -> GetReg -> SetReg -> SetReg
+          -> Regs -> Regs
+incDecRegWithCarry op getCarryReg getMainReg setCarryReg setMainReg regs = 
+  setCarryReg carryReg' <<< setMainReg mainReg' $ regs{m = 1}
+ where
+  carryReg' = (if mainRegInc.carry then _.res <<< op else id)
+    $ getCarryReg regs
+  mainReg' = mainRegInc.res
+  mainRegInc = op $ getMainReg regs
+
+--INC SP
+incSP :: Regs -> Regs
+incSP = incDecSP $ \x -> 0xFFFF .&. (x + 1)
+
+--DEC SP
+decSP :: Regs -> Regs
+decSP = incDecSP $ \x -> 0xFFFF .&. (x - 1)
+
+incDecSP :: (I16 -> I16) -> Regs -> Regs
+incDecSP op regs = regs {sp = op $ regs.sp, m = 1}
+
+--INC (HL)
+incHLMem :: Mem -> Mem
+incHLMem = incDecHLMem incI8
+
+--DEC (HL)
+decHLMem :: Mem -> Mem
+decHLMem = incDecHLMem decI8
+
+incDecHLMem :: (I8 -> { res :: I8, carry :: Boolean })
+            -> Mem -> Mem
+incDecHLMem op mem@{mainMem,regs} =
+  mem { mainMem = mainMem', regs = regs {f = testZeroFlag inced.res, m = 3} }
+ where
+  mainMem' = wr8 inced.res addr mainMem
+  inced = op $ rd8 addr mainMem
+  addr = joinRegs h l regs
+
+incI8 :: I8 -> { res :: I8, carry :: Boolean }
+incI8 i8 = { res : i8', carry : i8' == 0 }
+ where
+  i8' = (i8 + 1) .&. 255
+
+decI8 :: I8 -> { res :: I8, carry :: Boolean }
+decI8 i8 = { res : i8', carry : i8' == 255 }
+ where
+  i8' = (i8 - 1) .&. 255
 
 -- Helpers
 -- =======
