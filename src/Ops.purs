@@ -442,6 +442,28 @@ decI8 i8 = { res : i8', carry : i8' == 255 }
  where
   i8' = (i8 - 1) .&. 255
 
+-- Compares
+-- ========
+
+--CP A,R
+compAToReg :: GetReg -> Regs -> Regs
+compAToReg getReg regs = compAToX (getReg regs) regs
+
+--CP A,(HL)
+compAToMemHL :: Mem -> Regs
+compAToMemHL { mainMem, regs } = (compAToX hlMem regs) { m = 2 }
+ where hlMem = rd8 (joinRegs h l regs) mainMem
+
+--CP A,n
+compAToImm :: Mem -> Regs
+compAToImm { mainMem, regs } = (compAToX imm regs) { pc = regs.pc + 1, m = 2 }
+ where imm = rd8 regs.pc mainMem
+
+compAToX :: I8 -> Regs -> Regs
+compAToX x regs = regs { f = diff.flags, m = 1 }
+ where
+  diff = subI8s regs.a x
+
 -- Helpers
 -- =======
 
