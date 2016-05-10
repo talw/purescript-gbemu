@@ -442,6 +442,173 @@ decI8 i8 = { res : i8', carry : i8' == 255 }
  where
   i8' = (i8 - 1) .&. 255
 
+-- Loads
+-- =====
+
+--LD R,R
+ldRegFromReg :: SetReg -> GetReg
+      -> Regs -> Regs
+ldRegFromReg setDestReg getSrcReg regs = setDestReg (getSrcReg regs)
+  regs { m = 1 }
+
+--LD (nn),SP
+ldMemImmFromSP :: Mem -> Mem
+ldMemImmFromSP mem@{mainMem, regs} = 
+  mem { mainMem = mainMem', regs = regs { pc = regs.pc + 2, m = 5 } }
+ where
+  mainMem' = wr16 regs.sp addr mainMem
+  addr = rd16 regs.pc mainMem
+
+--LD SP,HL
+ldSPFromHL :: Regs -> Regs
+ldSPFromHL regs  = 
+  regs { sp = sp', m = 2 }
+ where sp' = joinRegs h l regs
+  
+ldSPFromImm :: Mem -> Regs
+ldSPFromImm { mainMem, regs } = 
+  regs { sp = sp', pc = regs.pc + 2, m = 3 }
+ where sp' = rd16 regs.pc mainMem
+  
+--LD RR,nn
+ldTwoRegsFromImm :: SetReg -> SetReg
+               -> Mem -> Regs
+ldTwoRegsFromImm setReg1 setReg2 mem = regs'' { m = 3 }
+ where
+  regs'  = ldRegFromImm setReg2 mem
+  regs'' = ldRegFromImm setReg1 mem { regs = regs' }
+
+--LD R,(IOC)
+ldRegFromFF00CMem :: SetReg -> Mem -> Regs
+ldRegFromFF00CMem setReg mem@{regs, mainMem} = regs' { m = 2 }
+ where regs' = ldRegFromFF00PlusX regs.c setReg mem
+
+--LD R,(IOn)
+ldRegFromFF00ImmMem :: SetReg -> Mem -> Regs
+ldRegFromFF00ImmMem setReg mem@{regs, mainMem} = regs' { pc = regs.pc + 1, m = 3 }
+ where regs' = ldRegFromFF00PlusX (rd8 regs.pc mainMem) setReg mem
+
+ldRegFromFF00PlusX :: I8 -> SetReg -> Mem -> Regs
+ldRegFromFF00PlusX  x setReg mem@{regs} = ldRegFromMem setReg addr mem
+ where addr = 0xFF00 + x
+
+--LD R,n
+ldRegFromImm :: SetReg -> Mem -> Regs
+ldRegFromImm setReg mem@{regs} = regs' { pc = regs.pc + 1 }
+  where regs' = ldRegFromMem setReg regs.pc mem
+
+--LD R,(RR)
+ldRegFromMem2R :: SetReg -> GetReg -> GetReg
+               -> Mem -> Regs
+ldRegFromMem2R setReg msByteReg lsByteReg mem@{regs} =
+  ldRegFromMem setReg ((msByteReg regs `shl` 8) + lsByteReg regs) mem
+
+--LD A,(nn)
+ldRegAFromMemImm :: Mem -> Regs
+ldRegAFromMemImm mem@{ mainMem, regs } = regs' { pc = regs.pc + 2, m = 4 }
+ where
+  regs' = ldRegFromMem setA addr mem
+  addr = rd16 regs.pc mainMem
+
+--LDD A,(HL)
+ldRegFromMemHLDec :: SetReg -> Mem -> Regs
+ldRegFromMemHLDec = ldRegFromMemHLIncDec decRegWithCarry
+
+--LDI A,(HL)
+ldRegFromMemHLInc :: SetReg -> Mem -> Regs
+ldRegFromMemHLInc = ldRegFromMemHLIncDec incRegWithCarry
+
+ldRegFromMemHLIncDec :: (GetReg -> GetReg -> SetReg -> SetReg -> Regs -> Regs)
+                   -- Inc/Dec reg operation's type signature
+                   -> SetReg -> Mem -> Regs
+ldRegFromMemHLIncDec op setReg mem@{ regs } = regs' {m = 2}
+ where
+  regs' = op h l setH setL
+        $ ldRegFromMem setA addr mem
+  addr = joinRegs h l regs
+
+ldRegFromMem :: SetReg -> I16 -> Mem -> Regs
+ldRegFromMem setReg addr { mainMem, regs } =
+  setReg (rd8 addr mainMem) regs{m = 2}
+
+--LD HL,SP|n|
+ldHLFromSPImm :: Mem -> Regs
+ldHLFromSPImm  mem@{ regs, mainMem } =
+  regs {h = split.ms, l = split.ls, pc = regs.pc + 1, m = 3}
+ where
+  split = splitI16 x
+  x = (absI8 imm + regs.sp) .&. 0xFFFF
+  imm = rd8 regs.pc mainMem
+
+--LDI (HL),A
+ldMemHLFromRegInc :: GetReg -> Mem -> Mem
+ldMemHLFromRegInc = ldMemHLFromRegIncDec incRegWithCarry
+
+--LDD (HL),A
+ldMemHLFromRegDec :: GetReg -> Mem -> Mem
+ldMemHLFromRegDec  = ldMemHLFromRegIncDec decRegWithCarry
+
+ldMemHLFromRegIncDec :: (GetReg -> GetReg -> SetReg -> SetReg -> Regs -> Regs)
+                   -- Inc/Dec reg operation's type signature
+                   -> GetReg
+                   -> Mem -> Mem
+ldMemHLFromRegIncDec op getReg mem@{regs} =
+  mem { mainMem = mainMem', regs = regs' {m = 2} }
+ where
+  regs' = op h l setH setL regs
+  mainMem' = _.mainMem $ ldMemFromReg addr a mem
+  addr = joinRegs h l regs
+
+--LD (IOC),R
+ldFF00CMemFromReg :: GetReg -> Mem -> Mem
+ldFF00CMemFromReg getReg mem@{regs, mainMem} =
+  mem' { regs = regs{m = 2} }
+ where mem' = ldFF00PlusXFromReg  regs.c getReg mem
+
+--LD (IOn),R
+ldFF00ImmMemFromReg :: GetReg -> Mem -> Mem
+ldFF00ImmMemFromReg getReg mem@{regs, mainMem} =
+  mem' { regs = regs{pc = regs.pc + 1, m = 3} }
+ where mem' = ldFF00PlusXFromReg  (rd8 regs.pc mainMem) getReg mem
+
+ldFF00PlusXFromReg :: I8 -> GetReg -> Mem -> Mem
+ldFF00PlusXFromReg   x getReg mem@{regs, mainMem} = mem'
+ where
+  mem' = ldMemFromReg addr getReg mem
+  addr = 0xFF00 + x
+
+--LD (nn),A
+ldMemImmFromRegA :: Mem -> Mem
+ldMemImmFromRegA  mem@{ mainMem, regs } =
+ mem' { regs = regs{m = 4, pc = regs.pc + 2} }
+ where
+  mem' = ldMemFromReg addr a mem
+  addr = rd16 regs.pc mainMem
+
+--LD (HL),n
+ldMemHLFromImm :: Mem -> Mem
+ldMemHLFromImm  mem@{mainMem,regs} =
+  mem { mainMem = mainMem' , regs = regs{m = 3, pc = regs.pc + 1} }
+ where
+  mainMem' = wr8 (rd8 regs.pc mainMem) addr mainMem
+  addr =  joinRegs h l regs
+
+--LD (RR),R
+ldMem2RFromReg :: GetReg -> GetReg -> GetReg
+                        -> Mem -> Mem
+ldMem2RFromReg msbAddrReg lsbAddrReg getReg mem@{ regs } =
+  ldMemFromReg (joinRegs msbAddrReg lsbAddrReg regs) getReg mem
+
+ldMemFromReg :: I16 -> GetReg
+           -> Mem -> Mem
+ldMemFromReg addr getReg mem@{ regs } = ldMemFromX addr (getReg regs) mem
+
+ldMemFromX :: I16 -> I8
+           -> Mem -> Mem
+ldMemFromX addr x mem@{mainMem,regs} =
+  mem { mainMem = mainMem', regs = regs{m = 2} }
+ where mainMem' = wr8 x addr mainMem
+
 -- Compares
 -- ========
 
