@@ -631,6 +631,33 @@ compAToX x regs = regs { f = diff.flags, m = 1 }
  where
   diff = subI8s regs.a x
 
+-- Stack operations
+-- ================
+
+--NOTE: On the one hand, there's an advantage of letting the compiler catch
+--more mistakes by using row polymorphism,
+--on the other hand it obfuscates the signature, is there a better way?
+--forall r s. { regs :: {sp::I8 | s}, mem :: MainMem | r }
+--         -> { regs :: {sp::I8 | s}, mem :: MainMem | r }
+--NOTE: Only 4 versions of PUSH so consider hard-coding them for performance.
+--PUSH RR
+pushReg :: GetReg -> GetReg
+        -> Mem -> Mem
+pushReg msByteReg lsByteReg mem@{regs,mainMem} =
+  mem { mainMem = mainMem', regs = regs { sp = regs.sp - 2, m = 3 } }
+ where
+  mainMem' =  wr8 (lsByteReg regs) (regs.sp - 2)
+          <<< wr8 (msByteReg regs) (regs.sp - 1)
+           $  mainMem
+
+--POP RR
+popReg :: SetReg -> SetReg
+       -> Mem -> Regs
+popReg setMsByteReg setLsByteReg { mainMem, regs = regs@{sp} }
+    =  setMsByteReg (rd8 (sp + 1) mainMem)
+   <<< setLsByteReg (rd8 sp mainMem)
+    $  regs { sp = sp + 2, m = 3 }
+
 -- Helpers
 -- =======
 
