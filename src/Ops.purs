@@ -635,7 +635,7 @@ compAToX x regs = regs { f = diff.flags, m = 1 }
 -- ================
 
 --NOTE: On the one hand, there's an advantage of letting the compiler catch
---more mistakes by using row polymorphism,
+--more mistakes by using row polymorphism in this case,
 --on the other hand it obfuscates the signature, is there a better way?
 --forall r s. { regs :: {sp::I8 | s}, mem :: MainMem | r }
 --         -> { regs :: {sp::I8 | s}, mem :: MainMem | r }
@@ -657,6 +657,102 @@ popReg setMsByteReg setLsByteReg { mainMem, regs = regs@{sp} }
     =  setMsByteReg (rd8 (sp + 1) mainMem)
    <<< setLsByteReg (rd8 sp mainMem)
     $  regs { sp = sp + 2, m = 3 }
+
+-- Jumps
+-- =====
+
+-- JR NZ,n
+-- JR Z,n
+-- JR NC,n
+-- JR C,n
+jumpRelImmFlag :: Boolean -> I8 -> Mem -> Regs
+jumpRelImmFlag inverse flag mem@{mainMem, regs} =
+  if inverse `xor` isSetFlag flag regs.f
+    then jumpRelImm mem
+    else regs { pc = regs.pc + 1, m = 2 }
+
+--JR n
+jumpRelImm :: Mem -> Regs
+jumpRelImm { mainMem, regs } =
+  regs { pc = pc', m = 3 }
+ where
+  --NOTE: is it necessary to abs the immediate?
+  pc' = regs.pc + 1 + absI8 imm
+  imm = rd8 regs.pc mainMem
+
+-- JP NZ,nn
+-- JP Z,nn
+-- JP NC,nn
+-- JP C,nn
+jumpImmFlag :: Boolean -> I8 -> Mem -> Regs
+jumpImmFlag inverse flag mem@{mainMem,regs} =
+  if inverse `xor` isSetFlag flag regs.f
+    then (jumpImm mem) { m = 4 }
+    else regs { pc = regs.pc + 2, m = 3 }
+
+-- JP nn
+jumpImm :: Mem -> Regs
+jumpImm { mainMem, regs } =
+  regs { pc = pc', m = 3 }
+ where pc' = rd16 regs.pc mainMem
+
+-- JP (HL)
+jumpHL :: Regs -> Regs
+jumpHL regs = regs { pc = pc', m = 1 }
+ where pc' = joinRegs h l regs
+
+{--jumpX :: I8 -> Regs--}
+{--jumpX { mainMem, regs } =--}
+  {--regs { pc = pc', m = 3 }--}
+ {--where pc' = rd16 regs.pc mainMem--}
+
+-- Call Z,nn
+-- Call NZ,nn
+-- Call C,nn
+-- Call NC,nn
+callImmFlag :: Boolean -> I8 -> Mem -> Mem
+callImmFlag inverse flag mem@{mainMem,regs} = 
+  if inverse `xor` isSetFlag flag regs.f
+    then callImm mem
+    else mem { regs = regs {pc = regs.pc + 2, m = 3} }
+
+-- Call nn
+callImm :: Mem -> Mem
+callImm mem@{mainMem,regs} =
+  mem { mainMem =  mainMem', regs = regs { pc = imm, sp = regs.sp - 2, m = 5 } }
+ where
+  mainMem' = wr16 (regs.sp-2) (regs.pc + 2) $ mainMem
+  imm = rd16 regs.pc mainMem
+
+-- RET Z
+-- RET NZ
+-- RET C
+-- RET NC
+retFlag :: Boolean -> I8 -> Mem -> Regs
+retFlag inverse flag mem@{mainMem,regs} = 
+  if inverse `xor` isSetFlag flag regs.f
+    then ret mem
+    else regs { m = 1 }
+
+-- RETI
+retEnableInterrupt :: Mem -> Regs
+retEnableInterrupt { mainMem, regs, svdRegs } =
+  restoreRegs svdRegs regs { ime = true, pc = pc', sp = regs.sp + 2, m = 3 }
+ where pc' = rd16 regs.sp mainMem
+
+-- RET
+ret :: Mem -> Regs
+ret { mainMem, regs } =
+  regs { pc = pc', sp = regs.sp + 2, m = 3 }
+ where pc' = rd16 regs.sp mainMem
+  
+--RST XX
+callRoutine :: I16 -> Mem -> Mem
+callRoutine addr { mainMem, regs, svdRegs } =
+  { mainMem : mainMem', regs : regs', svdRegs : saveRegs regs svdRegs }
+ where
+  regs' = regs { sp = regs.sp - 2, pc = addr, m = 3 }
+  mainMem' = wr16 regs.pc (regs.sp - 2) mainMem
 
 -- Helpers
 -- =======
