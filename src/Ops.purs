@@ -754,6 +754,93 @@ callRoutine addr { mainMem, regs, svdRegs } =
   regs' = regs { sp = regs.sp - 2, pc = addr, m = 3 }
   mainMem' = wr16 regs.pc (regs.sp - 2) mainMem
 
+-- Misc.
+-- =====
+
+--SWAP R
+swapReg :: SetReg -> GetReg -> Regs -> Regs
+swapReg setReg getReg regs = setReg reg' $ regs { m = 1 }
+ where
+  reg' = ((0x0F.&.reg) `shl` 4) .|. ((0xF0.&.reg) `zshr` 4)
+  reg = getReg regs
+
+--SWAP (HL)
+swapMemHL :: Mem -> Mem
+swapMemHL mem@{mainMem, regs} =
+  mem { mainMem = mainMem', regs = regs { m = 4 } }
+ where
+  mainMem' = wr8 hlMem' addr mainMem
+  hlMem' = ((0x0F.&.hlMem) `shl` 4) .|. ((0xF0.&.hlMem) `zshr` 4)
+  hlMem = rd8 addr mainMem
+  addr = joinRegs h l regs
+
+--Why a command called 'clear' actually flips the tag
+--and not unset it, is a question that shouldn't be directed at me!
+--CCF
+clearCarryFlag :: Regs -> Regs
+clearCarryFlag = changeCarryFlag false
+
+--SCF
+setCarryFlag :: Regs -> Regs
+setCarryFlag = changeCarryFlag true
+
+changeCarryFlag :: Boolean -> Regs -> Regs
+changeCarryFlag isSet regs = regs { f = f', m = 1 }
+ where f' =  unsetFlag subtractionFlag
+         <<< unsetFlag halfCarryFlag
+         <<< (if isSet then setFlag else flipFlag) carryFlag
+          $  regs.f
+
+--DAA
+adjAForBCDAdd :: Regs -> Regs
+adjAForBCDAdd regs = regs { f = adjF regs.f, a = a', m = 1 }
+ where
+  a' = adjHighNyb <<< adjLowNyb $ regs.a
+  adjLowNyb = if (regs.f .&. halfCarryFlag /= 0) || (regs.a .&. 15 > 9)
+    then (6 + _) else id
+  adjHighNyb = if shouldAdjHighNyb then (0x60 + _) else id
+  adjF = if shouldAdjHighNyb then (carryFlag .|. _) else (cmplCarryFlag .&. _)
+  shouldAdjHighNyb = (regs.f .&. halfCarryFlag /= 0) || (regs.a > 0x99)
+
+--NOP
+nop :: Regs -> Regs
+nop = _ { m = 1}
+
+--Invalid opCode
+invalidOpCode :: Z80State -> Z80State
+--NOTE: LOG THIS! for debugging purposes
+invalidOpCode state = state { stop = true }
+
+--STOP 
+--NOTE: this is just a guess
+stop :: Z80State -> Z80State
+stop state@{mem=mem@{regs}} =
+  state { stop = true
+        , mem = mem { regs = regs { m = 1 } }
+        }
+
+--HALT
+halt :: Z80State -> Z80State
+halt state@{mem=mem@{regs}} =
+  state { halt = true
+        , mem = mem { regs = regs { m = 1 } }
+        }
+
+--DI
+--EI
+setInterrupts :: Boolean -> Regs -> Regs
+setInterrupts enable = _ { ime = enable, m = 1 }
+
+--Extended Ops
+execExtOps :: Array (Z80State -> Z80State)
+           -> Z80State -> Z80State
+execExtOps opsMap state@{ mem = mem@{mainMem,regs} } = extOp state'
+ where
+  --NOTE replace toMaybe, with something to log errors
+  extOp = opsMap !! opCode
+  state' = state { mem = mem { regs = regs { pc = 65535 .&. (regs.pc + 1) } } }
+  opCode = rd8 regs.pc mainMem
+
 -- Helpers
 -- =======
 
@@ -822,6 +909,12 @@ setHalfCarryFlag :: I8 -> I8 -> I8 -> I8 -> I8
 setHalfCarryFlag reg1 reg2 sum =
   if res /= 0 then (_ .|. halfCarryFlag) else (_ .&. cmplHalfCarryFlag)
  where res = 0x10 .&. (reg1 .^. reg2 .^. sum)
+
+--NOTE: replace fromMaybe with an error report mechanism to trace bad cases
+getOpcode :: Array (Z80State -> Z80State) -> Int -> Z80State -> Z80State
+getOpcode table ix = fromMaybe id $ table A.!! ix
+
+infixl 5 getOpcode as !!
 
 xor :: Boolean -> Boolean -> Boolean
 xor true x = not x
