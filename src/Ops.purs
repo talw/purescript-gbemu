@@ -837,7 +837,7 @@ execExtOps :: Array (Z80State -> Z80State)
 execExtOps opsMap state@{ mem = mem@{mainMem,regs} } = extOp state'
  where
   --NOTE replace toMaybe, with something to log errors
-  extOp = opsMap !! opCode
+  extOp = getOpcode opCode opsMap 
   state' = state { mem = mem { regs = regs { pc = 65535 .&. (regs.pc + 1) } } }
   opCode = rd8 regs.pc mainMem
 
@@ -911,10 +911,8 @@ setHalfCarryFlag reg1 reg2 sum =
  where res = 0x10 .&. (reg1 .^. reg2 .^. sum)
 
 --NOTE: replace fromMaybe with an error report mechanism to trace bad cases
-getOpcode :: Array (Z80State -> Z80State) -> Int -> Z80State -> Z80State
-getOpcode table ix = fromMaybe id $ table A.!! ix
-
-infixl 5 getOpcode as !!
+getOpcode :: Int -> Array (Z80State -> Z80State) -> Z80State -> Z80State
+getOpcode ix table = fromMaybe id $ table A.!! ix
 
 xor :: Boolean -> Boolean -> Boolean
 xor true x = not x
