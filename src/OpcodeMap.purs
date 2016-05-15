@@ -64,11 +64,6 @@ basicOps =
   , mr2op $ ldRegFromImm setE               -- LD E,n
   , rr2op $ rotA Right false                -- RR A
 
-  , rr2op $ incReg e setE                   -- INC E
-  , rr2op $ decReg e setE                   -- DEC E
-  , mr2op $ ldRegFromImm setE               -- LD E,n
-  , rr2op $ rotA Right false                -- RR A
-
                                             -- 2x
   , mr2op $ jumpRelImmFlag true zeroFlag    -- JR NZ,n
   , mr2op $ ldTwoRegsFromImm setH setL      -- LD HL,nn
