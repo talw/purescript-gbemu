@@ -7,6 +7,9 @@ import Data.Array ((!!)) as A
 
 import Types
 import MainMem
+import Utils
+
+import Debug
 
 --NOTE: consider moving the timings to 2D arrays.
 --separate from the opcode's logic
@@ -26,8 +29,8 @@ addHLMemToA { mainMem, regs } = (addXToA hlMem regs) { m = 2 }
 --ADD A,n
 addImmToA :: Mem -> Regs
 addImmToA { mainMem, regs } =
-  (addXToA imm regs) { pc = regs.pc + 1, m = 2 }
- where imm = rd8 regs.pc mainMem
+  (addXToA imm regs) { pc = regs.pc + 2, m = 2 }
+ where imm = rd8 (regs.pc+1) mainMem
 
 addXToA :: I8 -> Regs -> Regs
 addXToA x regs =
@@ -46,8 +49,8 @@ addHLMemCarryToA { mainMem, regs } = (addXCarryToA hlMem regs) { m = 2 }
 --ADC A,n
 addImmCarryToA :: Mem -> Regs
 addImmCarryToA { mainMem, regs } =
-  (addXCarryToA imm regs) { pc = regs.pc + 1, m = 2 }
- where imm = rd8 regs.pc mainMem
+  (addXCarryToA imm regs) { pc = regs.pc + 2, m = 2 }
+ where imm = rd8 (regs.pc+1) mainMem
 
 --NOTE: Test edge case of carry flag of 1 that causes a half-carry,
 --Is the half-carry flag set correctly?
@@ -64,10 +67,10 @@ addXCarryToA x regs =
 --ADD SP,|n|
 addImmToSP :: Mem -> Regs
 addImmToSP { regs, mainMem } =
-  regs {sp = sp', pc = regs.pc + 1, m = 4}
+  regs {sp = sp', pc = regs.pc + 2, m = 4}
  where
   sp' = (absI8 imm + regs.sp) .&. 0xFFFF
-  imm = rd8 regs.pc mainMem
+  imm = rd8 (regs.pc+1) mainMem
 
 addI8s :: I8 -> I8 -> { res :: I8, flags :: I8 }
 addI8s x1 x2 = { res , flags }
@@ -120,8 +123,8 @@ subHLMemFromA { mainMem, regs } = (subXFromA hlMem regs) { m = 2 }
 
 --SUB A,n
 subImmFromA :: Mem -> Regs
-subImmFromA { mainMem, regs } = (subXFromA imm regs) { pc = regs.pc + 1, m = 2 }
- where imm = rd8 regs.pc mainMem
+subImmFromA { mainMem, regs } = (subXFromA imm regs) { pc = regs.pc + 2, m = 2 }
+ where imm = rd8 (regs.pc+1) mainMem
 
 --NOTE: Subtractions and additions are relatively similar. Consider
 --Using same functions for both, if it doesn't obfuscate much.
@@ -141,8 +144,8 @@ subHLMemCarryFromA { mainMem, regs } = (subXCarryFromA hlMem regs) { m = 2 }
 
 --SBC A,n
 subImmCarryToA :: Mem -> Regs
-subImmCarryToA { mainMem, regs } = (subXCarryFromA imm regs) { pc = regs.pc + 1, m = 2 }
- where imm = rd8 regs.pc mainMem
+subImmCarryToA { mainMem, regs } = (subXCarryFromA imm regs) { pc = regs.pc + 2, m = 2 }
+ where imm = rd8 (regs.pc+1) mainMem
 
 --NOTE: Test edge case of carry flag of 1 that causes a half-carry,
 --Is the half-carry flag set correctly?
@@ -213,8 +216,8 @@ xorOpImmIntoA = boolOpImmIntoA (.^.)
 
 boolOpImmIntoA :: (I8 -> I8 -> I8) -> Mem -> Regs
 boolOpImmIntoA op { mainMem, regs } =
-  (boolOpXIntoA op imm regs) {pc = regs.pc + 1, m = 2}
- where imm = rd8 regs.pc mainMem
+  (boolOpXIntoA op imm regs) {pc = regs.pc + 2, m = 2}
+ where imm = rd8 (regs.pc+1) mainMem
 
 boolOpXIntoA :: (I8 -> I8 -> I8) -> I8 -> Regs -> Regs
 boolOpXIntoA op x regs =
@@ -454,10 +457,10 @@ ldRegFromReg setDestReg getSrcReg regs = setDestReg (getSrcReg regs)
 --LD (nn),SP
 ldMemImmFromSP :: Mem -> Mem
 ldMemImmFromSP mem@{mainMem, regs} = 
-  mem { mainMem = mainMem', regs = regs { pc = regs.pc + 2, m = 5 } }
+  mem { mainMem = mainMem', regs = regs { pc = regs.pc + 3, m = 5 } }
  where
   mainMem' = wr16 regs.sp addr mainMem
-  addr = rd16 regs.pc mainMem
+  addr = rd16 (regs.pc+1) mainMem
 
 --LD SP,HL
 ldSPFromHL :: Regs -> Regs
@@ -467,8 +470,8 @@ ldSPFromHL regs  =
   
 ldSPFromImm :: Mem -> Regs
 ldSPFromImm { mainMem, regs } = 
-  regs { sp = sp', pc = regs.pc + 2, m = 3 }
- where sp' = rd16 regs.pc mainMem
+  regs { sp = sp', pc = regs.pc + 3, m = 3 }
+ where sp' = rd16 (regs.pc+1) mainMem
   
 --LD RR,nn
 ldTwoRegsFromImm :: SetReg -> SetReg
@@ -485,8 +488,8 @@ ldRegFromFF00CMem setReg mem@{regs, mainMem} = regs' { m = 2 }
 
 --LD R,(IOn)
 ldRegFromFF00ImmMem :: SetReg -> Mem -> Regs
-ldRegFromFF00ImmMem setReg mem@{regs, mainMem} = regs' { pc = regs.pc + 1, m = 3 }
- where regs' = ldRegFromFF00PlusX (rd8 regs.pc mainMem) setReg mem
+ldRegFromFF00ImmMem setReg mem@{regs, mainMem} = regs' { pc = regs.pc + 2, m = 3 }
+ where regs' = ldRegFromFF00PlusX (rd8 (regs.pc+1) mainMem) setReg mem
 
 ldRegFromFF00PlusX :: I8 -> SetReg -> Mem -> Regs
 ldRegFromFF00PlusX  x setReg mem@{regs} = ldRegFromMem setReg addr mem
@@ -494,8 +497,8 @@ ldRegFromFF00PlusX  x setReg mem@{regs} = ldRegFromMem setReg addr mem
 
 --LD R,n
 ldRegFromImm :: SetReg -> Mem -> Regs
-ldRegFromImm setReg mem@{regs} = regs' { pc = regs.pc + 1 }
-  where regs' = ldRegFromMem setReg regs.pc mem
+ldRegFromImm setReg mem@{regs} = regs' { pc = regs.pc + 2 }
+  where regs' = ldRegFromMem setReg (regs.pc+1) mem
 
 --LD R,(RR)
 ldRegFromMem2R :: SetReg -> GetReg -> GetReg
@@ -505,10 +508,10 @@ ldRegFromMem2R setReg msByteReg lsByteReg mem@{regs} =
 
 --LD A,(nn)
 ldRegAFromMemImm :: Mem -> Regs
-ldRegAFromMemImm mem@{ mainMem, regs } = regs' { pc = regs.pc + 2, m = 4 }
+ldRegAFromMemImm mem@{ mainMem, regs } = regs' { pc = regs.pc + 3, m = 4 }
  where
   regs' = ldRegFromMem setA addr mem
-  addr = rd16 regs.pc mainMem
+  addr = rd16 (regs.pc+1) mainMem
 
 --LDD A,(HL)
 ldRegFromMemHLDec :: SetReg -> Mem -> Regs
@@ -534,11 +537,11 @@ ldRegFromMem setReg addr { mainMem, regs } =
 --LD HL,SP|n|
 ldHLFromSPImm :: Mem -> Regs
 ldHLFromSPImm  mem@{ regs, mainMem } =
-  regs {h = split.ms, l = split.ls, pc = regs.pc + 1, m = 3}
+  regs {h = split.ms, l = split.ls, pc = regs.pc + 2, m = 3}
  where
   split = splitI16 x
   x = (absI8 imm + regs.sp) .&. 0xFFFF
-  imm = rd8 regs.pc mainMem
+  imm = rd8 (regs.pc+1) mainMem
 
 --LDI (HL),A
 ldMemHLFromRegInc :: GetReg -> Mem -> Mem
@@ -568,8 +571,10 @@ ldFF00CMemFromReg getReg mem@{regs, mainMem} =
 --LD (IOn),R
 ldFF00ImmMemFromReg :: GetReg -> Mem -> Mem
 ldFF00ImmMemFromReg getReg mem@{regs, mainMem} =
-  mem' { regs = regs{pc = regs.pc + 1, m = 3} }
- where mem' = ldFF00PlusXFromReg  (rd8 regs.pc mainMem) getReg mem
+  mem' { regs = regs{pc = regs.pc + 2, m = 3} }
+ where
+  mem' = ldFF00PlusXFromReg imm getReg mem
+  imm = rd8 (regs.pc+1) mainMem
 
 ldFF00PlusXFromReg :: I8 -> GetReg -> Mem -> Mem
 ldFF00PlusXFromReg   x getReg mem@{regs, mainMem} = mem'
@@ -580,18 +585,19 @@ ldFF00PlusXFromReg   x getReg mem@{regs, mainMem} = mem'
 --LD (nn),A
 ldMemImmFromRegA :: Mem -> Mem
 ldMemImmFromRegA  mem@{ mainMem, regs } =
- mem' { regs = regs{m = 4, pc = regs.pc + 2} }
+ mem' { regs = regs{m = 4, pc = regs.pc + 3} }
  where
   mem' = ldMemFromReg addr a mem
-  addr = rd16 regs.pc mainMem
+  addr = rd16 (regs.pc+1) mainMem
 
 --LD (HL),n
 ldMemHLFromImm :: Mem -> Mem
 ldMemHLFromImm  mem@{mainMem,regs} =
-  mem { mainMem = mainMem' , regs = regs{m = 3, pc = regs.pc + 1} }
+  mem { mainMem = mainMem' , regs = regs{m = 3, pc = regs.pc + 2} }
  where
-  mainMem' = wr8 (rd8 regs.pc mainMem) addr mainMem
+  mainMem' = wr8 imm addr mainMem
   addr =  joinRegs h l regs
+  imm = rd8 (regs.pc+1) mainMem
 
 --LD (RR),R
 ldMem2RFromReg :: GetReg -> GetReg -> GetReg
@@ -623,8 +629,8 @@ compAToMemHL { mainMem, regs } = (compAToX hlMem regs) { m = 2 }
 
 --CP A,n
 compAToImm :: Mem -> Regs
-compAToImm { mainMem, regs } = (compAToX imm regs) { pc = regs.pc + 1, m = 2 }
- where imm = rd8 regs.pc mainMem
+compAToImm { mainMem, regs } = (compAToX imm regs) { pc = regs.pc + 2, m = 2 }
+ where imm = rd8 (regs.pc+1) mainMem
 
 compAToX :: I8 -> Regs -> Regs
 compAToX x regs = regs { f = diff.flags, m = 1 }
@@ -654,7 +660,7 @@ pushReg msByteReg lsByteReg mem@{regs,mainMem} =
 popReg :: SetReg -> SetReg
        -> Mem -> Regs
 popReg setMsByteReg setLsByteReg { mainMem, regs = regs@{sp} }
-    =  setMsByteReg (rd8 (sp + 1) mainMem)
+    = setMsByteReg (rd8 (sp + 1) mainMem)
    <<< setLsByteReg (rd8 sp mainMem)
     $  regs { sp = sp + 2, m = 3 }
 
@@ -669,7 +675,16 @@ jumpRelImmFlag :: Boolean -> I8 -> Mem -> Regs
 jumpRelImmFlag inverse flag mem@{mainMem, regs} =
   if inverse `xor` isSetFlag flag regs.f
     then jumpRelImm mem
-    else regs { pc = regs.pc + 1, m = 2 }
+    else regs { pc = regs.pc + 2, m = 2 }
+
+{----JR n--}
+{--jumpRelImm :: Mem -> Regs--}
+{--jumpRelImm { mainMem, regs } =--}
+  {--regs { pc = pc', m = 3 }--}
+ {--where--}
+  {----NOTE: is it necessary to abs the immediate?--}
+  {--pc' = regs.pc + 1 + absI8 imm--}
+  {--imm = rd8 regs.pc mainMem--}
 
 --JR n
 jumpRelImm :: Mem -> Regs
@@ -677,8 +692,8 @@ jumpRelImm { mainMem, regs } =
   regs { pc = pc', m = 3 }
  where
   --NOTE: is it necessary to abs the immediate?
-  pc' = regs.pc + 1 + absI8 imm
-  imm = rd8 regs.pc mainMem
+  pc' = regs.pc + 2 + absI8 imm
+  imm = rd8 (regs.pc+1) mainMem
 
 -- JP NZ,nn
 -- JP Z,nn
@@ -688,13 +703,13 @@ jumpImmFlag :: Boolean -> I8 -> Mem -> Regs
 jumpImmFlag inverse flag mem@{mainMem,regs} =
   if inverse `xor` isSetFlag flag regs.f
     then (jumpImm mem) { m = 4 }
-    else regs { pc = regs.pc + 2, m = 3 }
+    else regs { pc = regs.pc + 3, m = 3 }
 
 -- JP nn
 jumpImm :: Mem -> Regs
 jumpImm { mainMem, regs } =
   regs { pc = pc', m = 3 }
- where pc' = rd16 regs.pc mainMem
+ where pc' = rd16 (regs.pc+1) mainMem
 
 -- JP (HL)
 jumpHL :: Regs -> Regs
@@ -714,7 +729,7 @@ callImmFlag :: Boolean -> I8 -> Mem -> Mem
 callImmFlag inverse flag mem@{mainMem,regs} = 
   if inverse `xor` isSetFlag flag regs.f
     then callImm mem
-    else mem { regs = regs {pc = regs.pc + 2, m = 3} }
+    else mem { regs = regs {pc = regs.pc + 3, m = 3} }
 
 -- Call nn
 callImm :: Mem -> Mem
@@ -722,7 +737,7 @@ callImm mem@{mainMem,regs} =
   mem { mainMem =  mainMem', regs = regs { pc = imm, sp = regs.sp - 2, m = 5 } }
  where
   mainMem' = wr16 (regs.sp-2) (regs.pc + 2) $ mainMem
-  imm = rd16 regs.pc mainMem
+  imm = rd16 (regs.pc+1) mainMem
 
 -- RET Z
 -- RET NZ

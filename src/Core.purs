@@ -2,10 +2,15 @@ module Core where
 
 import Prelude
 import Data.Int.Bits
+import Data.Maybe
+import Control.Monad.Eff
 
 import Types
 import MainMem
 import Ops
+import OpCodeMap
+import Gpu
+import Utils
 
 reset :: Z80State -> Z80State
 reset state =
@@ -18,20 +23,24 @@ reset state =
 --NOTE is there a better way to set nested properties?
 --consider checking the lens-equivalent in purescript
 step :: Z80State -> Z80State
-step = incTime <<< incPc <<< op 
+step state = incTime <<< incPc (state.mem.regs.pc) <<< op $ trace (mainMemStr state.mem.mainMem) \_ -> trace (regsStr state.mem.regs) \_ -> state
   where
-    op :: Z80State -> Z80State
-    op = id -- TODO: undefined
-    incTime state@{ totalM } = state
-      { totalM = totalM + state.mem.regs.m }
-    incPc state@{ mem }=
-      state {
-        mem = mem {
-          regs = mem.regs {
-            pc = (mem.regs.pc + 1) .&. 255
+    -- NOTE: change fromMaybe with something that will log exceptional cases.
+    op = getOpcode (trh "opCode" opCode) basicOps
+    opCode = rd8 state.mem.regs.pc state.mem.mainMem
+    incTime state@{totalM} = state
+      { totalM = state.totalM + state.mem.regs.m }
+    incPc oldPc newState =
+      if oldPc /= newState.mem.regs.pc
+        then newState
+        else
+          newState {
+            mem = newState.mem {
+              regs = newState.mem.regs {
+                pc = 65535 .&. (newState.mem.regs.pc + 1)
+              }
+            }
           }
-        }
-      }
 
 cleanState :: Z80State
 cleanState = 
