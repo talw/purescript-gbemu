@@ -375,7 +375,9 @@ incReg = incDecReg incI8
 
 --DEC R
 decReg :: GetReg -> SetReg -> Regs -> Regs
-decReg = incDecReg decI8
+decReg getReg setReg regs = regs' { f = setFlag subtractionFlag regs'.f }
+  where regs' = (incDecReg decI8 getReg setReg regs)
+  
 
 incDecReg :: (I8 -> { res :: I8, carry :: Boolean })
           -> GetReg -> SetReg -> Regs -> Regs
