@@ -738,7 +738,7 @@ callImm :: Mem -> Mem
 callImm mem@{mainMem,regs} =
   mem { mainMem =  mainMem', regs = regs { pc = imm, sp = regs.sp - 2, m = 5 } }
  where
-  mainMem' = wr16 (regs.sp-2) (regs.pc + 2) $ mainMem
+  mainMem' = wr16 (regs.pc + 3) (regs.sp-2) $ mainMem
   imm = rd16 (regs.pc+1) mainMem
 
 -- RET Z
