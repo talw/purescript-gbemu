@@ -1,11 +1,4 @@
-module Utils
-  ( getFromSeq
-  , getFromSeqNoDef
-  , (!!)
-  , seqToArray
-  , toHexStr
-  , fromHexStr
-  ) where
+module Utils where
 
 import Prelude
 import Data.Sequence as S
@@ -30,11 +23,10 @@ infixl 5 getFromSeqNoDef as !!
 
 seqToArray :: forall a. S.Seq a -> Array a
 seqToArray = U.unfoldr S.uncons
- {--where--}
-  {--f :: S.Seq a -> Maybe (Tuple a (S.Seq a))--}
-  {--f = S.uncons--}
+
+cmp2 :: forall a b c d. (c -> d) -> (a -> b -> c) -> (a -> b -> d)
+cmp2 g f a b = g $ f a b
 
 --NOTES  replace fromMaybe with something that will log invalid indices
 {--arrIx :: Array Int -> Int -> Int--}
 {--arrIx arr ix = fromMaybe 0 $ A.index arr ix--}
-

@@ -170,7 +170,7 @@ subI8s x1 x2 = { res , flags }
 
 --AND A,R
 andOpRegIntoA :: GetReg -> Regs -> Regs
-andOpRegIntoA = boolOpRegIntoA (.&.)
+andOpRegIntoA = adjFlag halfCarryFlag `cmp2` boolOpRegIntoA (.&.)
 
 --OR A,R
 orOpRegIntoA :: GetReg -> Regs -> Regs
@@ -185,7 +185,7 @@ boolOpRegIntoA op getReg regs = boolOpXIntoA op (getReg regs) regs
 
 --AND A,(HL)
 andOpHLMemIntoA :: Mem -> Regs
-andOpHLMemIntoA = boolOpHlMemIntoA (.&.)
+andOpHLMemIntoA = adjFlag halfCarryFlag <<< boolOpHlMemIntoA (.&.)
 
 --OR A,(HL)
 orOpHLMemIntoA :: Mem -> Regs
@@ -202,7 +202,7 @@ boolOpHlMemIntoA op { mainMem, regs } =
 
 --AND A,Imm
 andOpImmIntoA :: Mem -> Regs
-andOpImmIntoA  = boolOpImmIntoA (.&.)
+andOpImmIntoA = adjFlag halfCarryFlag <<< boolOpImmIntoA (.&.)
 
 --OR A,Imm
 orOpImmIntoA :: Mem -> Regs
@@ -677,15 +677,6 @@ jumpRelImmFlag inverse flag mem@{mainMem, regs} =
     then jumpRelImm mem
     else regs { pc = regs.pc + 2, m = 2 }
 
-{----JR n--}
-{--jumpRelImm :: Mem -> Regs--}
-{--jumpRelImm { mainMem, regs } =--}
-  {--regs { pc = pc', m = 3 }--}
- {--where--}
-  {----NOTE: is it necessary to abs the immediate?--}
-  {--pc' = regs.pc + 1 + absI8 imm--}
-  {--imm = rd8 regs.pc mainMem--}
-
 --JR n
 jumpRelImm :: Mem -> Regs
 jumpRelImm { mainMem, regs } =
@@ -884,6 +875,9 @@ splitI16 :: I16 -> { ms :: I8, ls :: I8 }
 splitI16 x = { ms : (x `zshr` 8) .&. 255
              , ls : x .&. 255
              }
+
+adjFlag :: I8 -> Regs -> Regs
+adjFlag flag regs = regs { f = setFlag flag regs.f }
 
 isSetFlag :: I8 -> I8 -> Boolean
 isSetFlag f fs = f .&. fs /= 0
