@@ -683,8 +683,11 @@ jumpRelImm { mainMem, regs } =
   regs { pc = pc', m = 3 }
  where
   --NOTE: is it necessary to abs the immediate?
-  pc' = regs.pc + 2 + absI8 imm
+  pc' = addOrSubImm $ regs.pc + 2 --absI8 imm
   imm = rd8 (regs.pc+1) mainMem
+  absImm = absI8 imm
+  addOrSubImm = if absImm == imm
+    then (_ + absImm) else (_ - absImm)
 
 -- JP NZ,nn
 -- JP Z,nn
