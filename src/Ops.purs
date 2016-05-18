@@ -9,8 +9,6 @@ import Types
 import MainMem
 import Utils
 
-import Debug
-
 --NOTE: consider moving the timings to 2D arrays.
 --separate from the opcode's logic
 
@@ -949,6 +947,3 @@ cmplHalfCarryFlag :: I8
 cmplHalfCarryFlag = 0xD0
 subtractionFlag :: I8
 subtractionFlag = 0x40
-
-type GetReg = Regs -> I8
-type SetReg = I8 -> Regs -> Regs

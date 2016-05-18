@@ -32,6 +32,9 @@ type Regs =
   , f :: I8
   }
 
+type GetReg = Regs -> I8
+type SetReg = I8 -> Regs -> Regs
+
 type SavedRegs =
   { a :: I8
   , b :: I8
