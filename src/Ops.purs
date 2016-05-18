@@ -476,10 +476,10 @@ ldSPFromImm { mainMem, regs } =
 --LD RR,nn
 ldTwoRegsFromImm :: SetReg -> SetReg
                -> Mem -> Regs
-ldTwoRegsFromImm setReg1 setReg2 mem = regs'' { m = 3 }
+ldTwoRegsFromImm setHighReg setLowReg mem@{regs} = regs'' { pc = regs.pc+3, m = 3 }
  where
-  regs'  = ldRegFromImm setReg2 mem
-  regs'' = ldRegFromImm setReg1 mem { regs = regs' }
+  regs'' = ldRegFromMem setHighReg (regs.pc+2) $ mem { regs = regs' }
+  regs'  = ldRegFromMem setLowReg (regs.pc+1) mem
 
 --LD R,(IOC)
 ldRegFromFF00CMem :: SetReg -> Mem -> Regs
