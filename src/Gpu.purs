@@ -88,16 +88,20 @@ gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf} = gpu'
   gpu' = if mTimer' < modeDuration mode
     then return gpu { mTimer = mTimer' }
     else case mode of 
-      HBlank -> do --TODO set True least significant interrupt flags bit
-        when ((trs "currLine" currLine) == pixHeight - 1)
-          $ setScreen (seqToArray scrBuf) =<< getCanvas
-        return gpu { mTimer = 0
-                   , scrBuf = S.empty :: S.Seq I8 --psc forces me here
-                   , currLine = currLine + 1
-                   , currPos = currPos + bytesWidth
-                   , mode = if currLine == pixHeight - 1 then VBlank
-                                                         else OamScan
-                   }  
+      --TODO set True least significant interrupt flags bit
+      HBlank -> 
+        let doOnLastLine gp = if currLine /= pixHeight - 1 then return gp
+              else do
+                setScreen (seqToArray scrBuf) =<< getCanvas
+                return $ gp { scrBuf = S.empty :: S.Seq I8 --psc forces me
+                            , mode = VBlank
+                            }
+         in doOnLastLine gpu { mTimer = 0
+                             , currLine = currLine + 1
+                             , currPos = currPos + bytesWidth
+                             , mode = OamScan
+                             }  
+        
       VBlank -> do
         let setOnLastLine =
               if currLine == pixHeight + 10 - 1
