@@ -32,7 +32,7 @@ basicOps =
   , rr2op $ incReg b setB                   -- INC B
   , rr2op $ decReg b setB                   -- DEC B
   , mr2op $ ldRegFromImm setB               -- LD B,n
-  , rr2op $ rotA Left true                  -- RLC A
+  , rr2op $ rotA LeftD true                  -- RLC A
 
   , mm2op $ ldMemImmFromSP                  -- LD (nn),SP
   , rr2op $ add2RegsToHL b c                -- ADD HL,BC
@@ -42,7 +42,7 @@ basicOps =
   , rr2op $ incReg c setC                   -- INC C
   , rr2op $ decReg c setC                   -- DEC C
   , mr2op $ ldRegFromImm setC               -- LD C,n
-  , rr2op $ rotA Right true                 -- RRC A
+  , rr2op $ rotA RightD true                 -- RRC A
 
                                             -- 1x
   , stop                                    -- STOP
@@ -53,7 +53,7 @@ basicOps =
   , rr2op $ incReg d setD                   -- INC D
   , rr2op $ decReg d setD                   -- DEC D
   , mr2op $ ldRegFromImm setD               -- LD D,n
-  , rr2op $ rotA Left false                 -- RL A
+  , rr2op $ rotA LeftD false                 -- RL A
 
   , mr2op $ jumpRelImm                      -- JR n
   , rr2op $ add2RegsToHL d e                -- ADD HL,DE
@@ -63,7 +63,7 @@ basicOps =
   , rr2op $ incReg e setE                   -- INC E
   , rr2op $ decReg e setE                   -- DEC E
   , mr2op $ ldRegFromImm setE               -- LD E,n
-  , rr2op $ rotA Right false                -- RR A
+  , rr2op $ rotA RightD false                -- RR A
 
                                             -- 2x
   , mr2op $ jumpRelImmFlag true zeroFlag    -- JR NZ,n
@@ -363,67 +363,67 @@ basicOps =
 extOps :: Array (Z80State -> Z80State)
 extOps = 
                                           -- 0x
-  [ rr2op $ rotReg Left true setB b       -- RLC B
-  , rr2op $ rotReg Left true setC c       -- RLC C
-  , rr2op $ rotReg Left true setD d       -- RLC D
-  , rr2op $ rotReg Left true setE e       -- RLC E
+  [ rr2op $ rotReg LeftD true setB b       -- RLC B
+  , rr2op $ rotReg LeftD true setC c       -- RLC C
+  , rr2op $ rotReg LeftD true setD d       -- RLC D
+  , rr2op $ rotReg LeftD true setE e       -- RLC E
 
-  , rr2op $ rotReg Left true setH h       -- RLC H
-  , rr2op $ rotReg Left true setL l       -- RLC L
-  , mm2op $ rotHLMem Left true            -- RLC (HL)
-  , rr2op $ rotReg Left true setA a       -- RLC A
+  , rr2op $ rotReg LeftD true setH h       -- RLC H
+  , rr2op $ rotReg LeftD true setL l       -- RLC L
+  , mm2op $ rotHLMem LeftD true            -- RLC (HL)
+  , rr2op $ rotReg LeftD true setA a       -- RLC A
 
-  , rr2op $ rotReg Right true setB b      -- RRC B
-  , rr2op $ rotReg Right true setC c      -- RRC C
-  , rr2op $ rotReg Right true setD d      -- RRC D
-  , rr2op $ rotReg Right true setE e      -- RRC E
+  , rr2op $ rotReg RightD true setB b      -- RRC B
+  , rr2op $ rotReg RightD true setC c      -- RRC C
+  , rr2op $ rotReg RightD true setD d      -- RRC D
+  , rr2op $ rotReg RightD true setE e      -- RRC E
 
-  , rr2op $ rotReg Right true setH h      -- RRC H
-  , rr2op $ rotReg Right true setL l      -- RRC L
-  , mm2op $ rotHLMem Right true           -- RRC (HL)
-  , rr2op $ rotReg Right true setA a      -- RRC A
+  , rr2op $ rotReg RightD true setH h      -- RRC H
+  , rr2op $ rotReg RightD true setL l      -- RRC L
+  , mm2op $ rotHLMem RightD true           -- RRC (HL)
+  , rr2op $ rotReg RightD true setA a      -- RRC A
 
                                           -- 1x
-  , rr2op $ rotReg Left false setB b      -- RL B
-  , rr2op $ rotReg Left false setC c      -- RL C
-  , rr2op $ rotReg Left false setD d      -- RL D
-  , rr2op $ rotReg Left false setE e      -- RL E
+  , rr2op $ rotReg LeftD false setB b      -- RL B
+  , rr2op $ rotReg LeftD false setC c      -- RL C
+  , rr2op $ rotReg LeftD false setD d      -- RL D
+  , rr2op $ rotReg LeftD false setE e      -- RL E
 
-  , rr2op $ rotReg Left false setH h      -- RL H
-  , rr2op $ rotReg Left false setL l      -- RL L
-  , mm2op $ rotHLMem Left false           -- RL (HL)
-  , rr2op $ rotReg Left false setA a      -- RL A
+  , rr2op $ rotReg LeftD false setH h      -- RL H
+  , rr2op $ rotReg LeftD false setL l      -- RL L
+  , mm2op $ rotHLMem LeftD false           -- RL (HL)
+  , rr2op $ rotReg LeftD false setA a      -- RL A
 
-  , rr2op $ rotReg Right false setB b     -- RR B
-  , rr2op $ rotReg Right false setC c     -- RR C
-  , rr2op $ rotReg Right false setD d     -- RR D
-  , rr2op $ rotReg Right false setE e     -- RR E
+  , rr2op $ rotReg RightD false setB b     -- RR B
+  , rr2op $ rotReg RightD false setC c     -- RR C
+  , rr2op $ rotReg RightD false setD d     -- RR D
+  , rr2op $ rotReg RightD false setE e     -- RR E
 
-  , rr2op $ rotReg Right false setH h     -- RR H
-  , rr2op $ rotReg Right false setL l     -- RR L
-  , mm2op $ rotHLMem Right false          -- RR(HL)
-  , rr2op $ rotReg Right false setA a     -- RR A
+  , rr2op $ rotReg RightD false setH h     -- RR H
+  , rr2op $ rotReg RightD false setL l     -- RR L
+  , mm2op $ rotHLMem RightD false          -- RR(HL)
+  , rr2op $ rotReg RightD false setA a     -- RR A
 
                                           -- 2x
-  , rr2op $ shiftReg Left false setB b    -- SLA B
-  , rr2op $ shiftReg Left false setC c    -- SLA C
-  , rr2op $ shiftReg Left false setD d    -- SLA D
-  , rr2op $ shiftReg Left false setE e    -- SLA E
+  , rr2op $ shiftReg LeftD false setB b    -- SLA B
+  , rr2op $ shiftReg LeftD false setC c    -- SLA C
+  , rr2op $ shiftReg LeftD false setD d    -- SLA D
+  , rr2op $ shiftReg LeftD false setE e    -- SLA E
 
-  , rr2op $ shiftReg Left false setH h    -- SLA H
-  , rr2op $ shiftReg Left false setL l    -- SLA L
-  , mm2op $ shiftMemHL Left false         -- SLA(HL)
-  , rr2op $ shiftReg Left false setA a    -- SLA A
+  , rr2op $ shiftReg LeftD false setH h    -- SLA H
+  , rr2op $ shiftReg LeftD false setL l    -- SLA L
+  , mm2op $ shiftMemHL LeftD false         -- SLA(HL)
+  , rr2op $ shiftReg LeftD false setA a    -- SLA A
 
-  , rr2op $ shiftReg Right true setB b    -- SRA B
-  , rr2op $ shiftReg Right true setC c    -- SRA C
-  , rr2op $ shiftReg Right true setD d    -- SRA D
-  , rr2op $ shiftReg Right true setE e    -- SRA E
+  , rr2op $ shiftReg RightD true setB b    -- SRA B
+  , rr2op $ shiftReg RightD true setC c    -- SRA C
+  , rr2op $ shiftReg RightD true setD d    -- SRA D
+  , rr2op $ shiftReg RightD true setE e    -- SRA E
 
-  , rr2op $ shiftReg Right true setH h    -- SRA H
-  , rr2op $ shiftReg Right true setL l    -- SRA L
-  , mm2op $ shiftMemHL Right true         -- SRA (HL)
-  , rr2op $ shiftReg Right true setA a    -- SRA A
+  , rr2op $ shiftReg RightD true setH h    -- SRA H
+  , rr2op $ shiftReg RightD true setL l    -- SRA L
+  , mm2op $ shiftMemHL RightD true         -- SRA (HL)
+  , rr2op $ shiftReg RightD true setA a    -- SRA A
 
                                           -- 3x
   , rr2op $ swapReg setB b                -- SWAP B
@@ -436,15 +436,15 @@ extOps =
   , mm2op $ swapMemHL                     -- SWAP(HL)
   , rr2op $ swapReg setA a                -- SWAP A
 
-  , rr2op $ shiftReg Right false setB b   -- SRL B
-  , rr2op $ shiftReg Right false setC c   -- SRL C
-  , rr2op $ shiftReg Right false setD d   -- SRL D
-  , rr2op $ shiftReg Right false setE e   -- SRL E
+  , rr2op $ shiftReg RightD false setB b   -- SRL B
+  , rr2op $ shiftReg RightD false setC c   -- SRL C
+  , rr2op $ shiftReg RightD false setD d   -- SRL D
+  , rr2op $ shiftReg RightD false setE e   -- SRL E
 
-  , rr2op $ shiftReg Right false setH h   -- SRL H
-  , rr2op $ shiftReg Right false setL l   -- SRL L
-  , mm2op $ shiftMemHL Right false        -- SRL (HL)
-  , rr2op $ shiftReg Right false setA a   -- SRL A
+  , rr2op $ shiftReg RightD false setH h   -- SRL H
+  , rr2op $ shiftReg RightD false setL l   -- SRL L
+  , mm2op $ shiftMemHL RightD false        -- SRL (HL)
+  , rr2op $ shiftReg RightD false setA a   -- SRL A
 
                                           -- 4x
   , rr2op $ testBitNOfReg 0 b             -- BIT 0,B

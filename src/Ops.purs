@@ -275,7 +275,7 @@ setBitNOfX setVal n x = if setVal
 -- Rotations
 -- =========
 
-data Dir = Left | Right
+data Dir = LeftD | RightD
 derive instance eqDir :: Eq Dir
 
 -- RL[C] A, base-opcode
@@ -312,19 +312,19 @@ rotX { dir, isCarryRot, isCB } x oldFlags = { res, flags }
   currCarry = if   (not isCarryRot) && (oldFlags .&. carryFlag /= 0)
                 || (isCarryRot      && isNewCarry)
     then case dir of
-      Left -> 1
-      Right -> 0x80 
+      LeftD -> 1
+      RightD -> 0x80 
     else 0
   setNewCarry = if isNewCarry
     then (carryFlag .|. _)
     else (cmplCarryFlag .&. _)
   isNewCarry = x .&. edgeBit /= 0
   edgeBit = case dir of
-    Left -> 0x80
-    Right -> 1
+    LeftD -> 0x80
+    RightD -> 1
   shiftFunc = case dir of
-    Left -> shl
-    Right -> zshr
+    LeftD -> shl
+    RightD -> zshr
 
 -- Shifts
 -- ======
@@ -352,17 +352,17 @@ shiftX :: Dir -> Boolean -> I8
 shiftX dir sign x = { res, flags }
  where
   res =  (255 .&. _)
-     <<< (if sign && dir == Right then (currCarry + _) else id)
+     <<< (if sign && dir == RightD then (currCarry + _) else id)
       $  x `shiftFunc` 1
   shiftFunc = case dir of
-    Left -> shl
-    Right -> zshr
+    LeftD -> shl
+    RightD -> zshr
   flags = newCarry .|. testZeroFlag res
   newCarry = if x .&. edgeBit /= 0 then carryFlag else 0
   currCarry = x .&. 0x80 --sign is only relevant for right shifts
   edgeBit = case dir of
-    Left -> 0x80
-    Right -> 1
+    LeftD -> 0x80
+    RightD -> 1
 
 -- Increments / Decrements
 -- =======================
@@ -577,7 +577,7 @@ ldFF00ImmMemFromReg getReg mem@{regs, mainMem} =
   imm = rd8 (regs.pc+1) mainMem
 
 ldFF00PlusXFromReg :: I8 -> GetReg -> Mem -> Mem
-ldFF00PlusXFromReg   x getReg mem@{regs, mainMem} = mem'
+ldFF00PlusXFromReg x getReg mem@{regs, mainMem} = mem'
  where
   mem' = ldMemFromReg addr getReg mem
   addr = 0xFF00 + x
