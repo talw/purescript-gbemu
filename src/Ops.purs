@@ -769,8 +769,9 @@ callRoutine addr { mainMem, regs, svdRegs } =
 
 --SWAP R
 swapReg :: SetReg -> GetReg -> Regs -> Regs
-swapReg setReg getReg regs = setReg reg' $ regs { m = 1 }
+swapReg setReg getReg regs = setReg reg' $ regs { f = f', m = 1 }
  where
+  f' = testZeroFlag reg'
   reg' = ((0x0F.&.reg) `shl` 4) .|. ((0xF0.&.reg) `zshr` 4)
   reg = getReg regs
 
