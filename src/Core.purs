@@ -3,6 +3,7 @@ module Core where
 import Prelude
 import Data.Int.Bits
 import Data.Maybe
+import Data.Either
 import Control.Monad.Eff
 
 import Types
@@ -11,41 +12,72 @@ import Ops
 import OpCodeMap
 import Gpu
 import Utils
+import Control.Monad.Rec.Class
 
-reset :: Z80State -> Z80State
-reset state =
-  cleanState {
-    mem = cleanMem {
-      mainMem = state.mem.mainMem 
+import Debug
+
+reset :: forall e. Array I8 -> Eff (canvas :: Canvas | e) Z80State
+reset rom = do
+  resetScreen
+  return 
+    cleanState {
+      mem = cleanMem {
+        mainMem = setRom rom cleanMainMem
+      }
     }
-  }
 
---NOTE is there a better way to set nested properties?
---consider checking the lens-equivalent in purescript
-step :: Z80State -> Z80State
-step state = incTime <<< incPc (state.mem.regs.pc) <<< op $ trace (mainMemStr state.mem.mainMem) \_ -> trace (regsStr state.mem.regs) \_ -> state
-  where
-    -- NOTE: change fromMaybe with something that will log exceptional cases.
-    op = getOpcode (trh "opCode" opCode) basicOps
-    opCode = rd8 state.mem.regs.pc state.mem.mainMem
-    incTime state@{totalM} = state
-      { totalM = state.totalM + state.mem.regs.m }
-    incPc oldPc newState =
-      if oldPc /= newState.mem.regs.pc
-        then newState
-        else
-          newState {
-            mem = newState.mem {
-              regs = newState.mem.regs {
-                pc = 65535 .&. (newState.mem.regs.pc + 1)
-              }
+
+run :: forall e. Int -> Z80State -> Eff (canvas :: Canvas | e) Z80State
+run interval state = tailRecM go { intr : interval, st : state }
+ where
+  go { st = st@{stop = true} } = return $ Right state
+  go { intr, st } | intr <= 0 = return $ Right state
+  go { intr, st } = do
+    st' <- step st
+    let elapsed = st'.totalM - st.totalM
+    return $ Left { intr : (intr - elapsed), st : st' }
+
+--NOTE Reg r should be increased by 1?
+step :: forall e. Z80State -> Eff (canvas :: Canvas | e) Z80State
+step state@{ mem=mem@{regs} } =
+  hndlGpu <<< incTime <<< incPc (regs.pc) <<< op $
+    {--trace (gpuRegsStr mem) \_ ->--}
+    {--trace (pcArea mem) \_ ->--}
+    {--trace (spArea mem) \_ ->--}
+    {--trace (regsStr regs) \_ ->--}
+    state
+ where
+  -- NOTE: change fromMaybe with something that will log exceptional cases.
+  op = getOpcode opCode {-(trh "opCode" opCode)-} basicOps
+  opCode = rd8 regs.pc mem.mainMem
+
+  incTime st@{totalM} = st
+    { totalM = st.totalM + regs.m }
+
+  hndlGpu st = do
+    gpu' <- gpuStep regs.m (getGpu st.mem.mainMem)
+    return $ st { mem = st.mem { mainMem = setGpu gpu' st.mem.mainMem } }
+
+  --NOTE is there a better way to set nested properties?
+  --consider checking the lens-equivalent in purescript.
+  incPc oldPc newState =
+    if oldPc /= newState.mem.regs.pc
+      then newState
+      else
+        newState {
+          mem = newState.mem {
+            regs = newState.mem.regs {
+              pc = 65535 .&. (newState.mem.regs.pc + 1)
             }
           }
+        }
 
 cleanState :: Z80State
 cleanState = 
   { mem : cleanMem
   , totalM : 0
+  , halt : false
+  , stop : false
   }
 
 cleanMem :: Mem

@@ -1,11 +1,13 @@
 module Gpu
-  ( gpuRd8
+  ( resetScreen
+  , gpuStep
+  , gpuRd8
   , gpuWr8
   , wrVRam
-  , resetScreen
   , cleanGpu
   , module Graphics.Canvas
   ) where
+
 
 import Prelude
 import Control.Bind
@@ -99,3 +101,36 @@ cleanTile = Tile $ S.fromFoldable $ A.replicate 64 0
 
 cleanColor :: Color
 cleanColor = {a:0,r:0,g:0,b:0}
+
+gpuStep :: forall e. I8 -> Gpu -> Eff (canvas :: Canvas | e) Gpu
+gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf} = gpu'
+ where
+  mTimer' = mTimer + mReg
+
+  gpu' = if mTimer' < modeDuration mode
+    then return gpu { mTimer = mTimer' }
+    else case mode of 
+      HBlank -> do --TODO set True least significant interrupt flags bit
+        when ((trs "currLine" currLine) == pixHeight - 1)
+          $ setScreen (seqToArray scrBuf) =<< getCanvas
+        return gpu { mTimer = 0
+                   , scrBuf = S.empty :: S.Seq I8 --psc forces me here
+                   , currLine = currLine + 1
+                   , currPos = currPos + bytesWidth
+                   , mode = if currLine == pixHeight - 1 then VBlank
+                                                         else OamScan
+                   }  
+      VBlank -> do
+        let setOnLastLine =
+              if currLine == pixHeight + 10 - 1
+                -- 10 increments after last line of 143
+                then _ { mTimer = 0
+                       , currLine = 0
+                       , currPos = 0
+                       , mode = OamScan
+                       }
+                else id
+        return $ setOnLastLine gpu { mTimer = 0 , currLine = (trs "vbl" (currLine + 1)) }
+      OamScan -> return gpu { mTimer = 0, mode = VramScan }
+      VramScan -> return $ renderLine gpu { mTimer = 0, mode = HBlank }
+
