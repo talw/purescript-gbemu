@@ -849,8 +849,8 @@ execExtOps opsMap state@{ mem = mem@{mainMem,regs} } = extOp state'
  where
   --NOTE replace toMaybe, with something to log errors
   extOp = getOpcode opCode opsMap 
-  state' = state { mem = mem { regs = regs { pc = 65535 .&. (regs.pc + 1) } } }
-  opCode = rd8 regs.pc mainMem
+  state' = state { mem = mem { regs = regs { pc = 65535 .&. (regs.pc + 2) } } }
+  opCode = rd8 (regs.pc+1) mainMem
 
 -- Helpers
 -- =======
