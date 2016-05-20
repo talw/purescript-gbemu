@@ -746,7 +746,8 @@ retFlag inverse flag mem@{mainMem,regs} =
 -- RETI
 retEnableInterrupt :: Mem -> Regs
 retEnableInterrupt { mainMem, regs, svdRegs } =
-  restoreRegs svdRegs regs { ime = true, pc = pc', sp = regs.sp + 2, m = 3 }
+  --NOTE; not certain restoreRegs is necessary here
+  {-restoreRegs svdRegs-} regs { ime = true, pc = pc', sp = regs.sp + 2, m = 3 }
  where pc' = rd16 regs.sp mainMem
 
 -- RET
