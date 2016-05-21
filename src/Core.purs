@@ -89,18 +89,18 @@ cleanMem =
 
 cleanRegs :: Regs
 cleanRegs =
-  { pc : 0
-  , sp : 0
-  , ime : false
+  { pc : 0x0200
+  , sp : 0xCFF7
+  , ime : true
   , m  : 0
   , a  : 0
   , b  : 0
   , c  : 0
   , d  : 0
-  , e  : 0
-  , h  : 0
-  , l  : 0
-  , f  : 0
+  , e  : 0xD8
+  , h  : 0x97
+  , l  : 0xFF
+  , f  : 0x80
   }
 
 cleanSavedRegs :: SavedRegs
