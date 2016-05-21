@@ -8,6 +8,7 @@ import Data.Array ((!!)) as A
 import Types
 import MainMem
 import Utils
+import Debug
 
 --NOTE: consider moving the timings to 2D arrays.
 --separate from the opcode's logic
@@ -710,11 +711,6 @@ jumpHL :: Regs -> Regs
 jumpHL regs = regs { pc = pc', m = 1 }
  where pc' = joinRegs h l regs
 
-{--jumpX :: I8 -> Regs--}
-{--jumpX { mainMem, regs } =--}
-  {--regs { pc = pc', m = 3 }--}
- {--where pc' = rd16 regs.pc mainMem--}
-
 -- Call Z,nn
 -- Call NZ,nn
 -- Call C,nn
@@ -744,11 +740,14 @@ retFlag inverse flag mem@{mainMem,regs} =
     else regs { m = 1 }
 
 -- RETI
-retEnableInterrupt :: Mem -> Regs
-retEnableInterrupt { mainMem, regs, svdRegs } =
-  --NOTE; not certain restoreRegs is necessary here
-  {-restoreRegs svdRegs-} regs { ime = true, pc = pc', sp = regs.sp + 2, m = 3 }
- where pc' = rd16 regs.sp mainMem
+--NOTE; not certain restoreRegs is necessary here
+retEnableInterrupt :: Mem -> Mem
+retEnableInterrupt mem@{ mainMem, regs, svdRegs } =
+  mem { mainMem = mainMem', regs = regs' }
+ where
+  mainMem' = setIme true mainMem
+  regs' = regs { pc = pc', sp = regs.sp + 2, m = 3 }
+  pc' = rd16 regs.sp mainMem
 
 -- RET
 ret :: Mem -> Regs

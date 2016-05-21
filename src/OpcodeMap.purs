@@ -308,7 +308,7 @@ basicOps =
   , mm2op $ callRoutine 0x10                -- RST 10
 
   , mr2op $ retFlag false carryFlag         -- RET C
-  , mr2op $ retEnableInterrupt              -- RETI
+  , mm2op $ retEnableInterrupt              -- RETI
   , mr2op $ jumpImmFlag false carryFlag     -- JP C,nn
   , invalidOpCode
 
@@ -342,7 +342,7 @@ basicOps =
   , mr2op $ ldRegFromFF00ImmMem setA        -- LDH A,(n)
   , mr2op $ popReg setA setF                -- POP AF
   , mr2op $ ldRegFromFF00CMem setA          -- LD A,(IOC)
-  , rr2op $ setInterrupts false             -- DI
+  , mm2op $ setInterrupts false             -- DI
 
   , invalidOpCode
   , mm2op $ pushReg a f                     -- PUSH AF
@@ -352,7 +352,7 @@ basicOps =
   , mr2op ldHLFromSPImm                     -- LDHL SP,d
   , rr2op ldSPFromHL                        -- LD SP,HL
   , mr2op ldRegAFromMemImm                  -- LD A,(nn)
-  , rr2op $ setInterrupts true              -- EI
+  , mm2op $ setInterrupts true              -- EI
 
   , invalidOpCode
   , invalidOpCode

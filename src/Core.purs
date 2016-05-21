@@ -2,6 +2,7 @@ module Core where
 
 import Prelude
 import Data.Int.Bits
+import Data.Tuple
 import Data.Maybe
 import Data.Either
 import Control.Monad.Eff
@@ -48,8 +49,6 @@ step state@{ mem=mem@{regs} } =
     state
  where
   -- NOTE: change fromMaybe with something that will log exceptional cases.
-  op = getOpcode opCode {-(trh "opCode" opCode)-} basicOps
-  opCode = rd8 regs.pc mem.mainMem
 
   incTime st@{totalM} = st
     { totalM = st.totalM + regs.m }
@@ -57,6 +56,35 @@ step state@{ mem=mem@{regs} } =
   hndlGpu st = do
     gpu' <- gpuStep regs.m (getGpu st.mem.mainMem)
     return $ st { mem = st.mem { mainMem = setGpu gpu' st.mem.mainMem } }
+
+  op = if shldHndlIntrr
+    then interruptOp
+    else regularOp
+
+  regularOp = getOpcode opCode basicOps
+  opCode = rd8 regs.pc mem.mainMem
+
+  --disable ime
+  interruptOp :: Z80State -> Z80State
+  interruptOp st = snd res $
+    st { mem = st.mem {
+      mainMem = setIme false <<< setIntF (fst res) $ st.mem.mainMem } }
+   where
+    res :: Tuple Int (Z80State -> Z80State)
+    res = fromMaybe (Tuple intF id) mRes
+    mRes = getOnBit intBits >>= \x -> case x of
+             1  -> Just $ Tuple (0xFE .&. intF) (mm2op $ callRoutine 0x40)
+             2  -> Just $ Tuple (0xFD .&. intF) (mm2op $ callRoutine 0x48)
+             4  -> Just $ Tuple (0xFB .&. intF) (mm2op $ callRoutine 0x50)
+             8  -> Just $ Tuple (0xF7 .&. intF) (mm2op $ callRoutine 0x58)
+             16 -> Just $ Tuple (0xEF .&. intF) (mm2op $ callRoutine 0x60)
+             otherwise -> Nothing -- NOTE log this
+
+  shldHndlIntrr = getIme state.mem.mainMem && intBits /= 0
+  intBits = intE .&. intF
+  intE = getIntE state.mem.mainMem
+  intF = getIntF state.mem.mainMem
+       
 
   --NOTE is there a better way to set nested properties?
   --consider checking the lens-equivalent in purescript.

@@ -27,7 +27,7 @@ setRom rom (MainMem mem) = MainMem $ mem { rom = rom }
 
 --NOTE: toggle biosMapped when pc == 0x0100
 rd8 :: I16 -> MainMem -> I8
-rd8 addr (MainMem {biosMapped,bios,rom,eram,wram,zram, gpu = gpu@{vram,oam}}) =
+rd8 addr (MainMem mem@{biosMapped,bios,rom,eram,wram,zram, gpu = gpu@{vram,oam}}) =
   case 0xF000.&.addr of
     0x0000 -> if biosMapped && (addr < 0x0100)
              then fromMaybe 0 $ bios A.!! addr -- NOTE log error
@@ -47,10 +47,15 @@ rd8 addr (MainMem {biosMapped,bios,rom,eram,wram,zram, gpu = gpu@{vram,oam}}) =
           if addr < 0xFEA0 then oam !! (0xFF .&. addr) else 0
         0x0F00 ->
           case 0x00F0.&.addr of
-            n | n >= 0x0080 -> zram !! (0x7F .&. addr)
+            0x00 -> case addr of
+              --TODO temporary until key input is implemented
+              0xFF00 -> 0xDF
+              0xFF0F -> mem.intF
+              otherwise -> -1 -- NOTE log this
             n | 0x0040 <= n && n <= 0x0070 -> gpuRd8 addr gpu
-            --TODO temporary until key input is implemented
-            0x00 -> if addr == 0xFF00 then 0xDF else -1
+            n | n >= 0x0080 -> if addr /= 0xFFFF
+              then zram !! (0x7F .&. addr)
+              else mem.intE
             otherwise -> -1 --NOTE log this
         otherwise -> -1 --NOTE log this
     otherwise -> -1 --NOTE log this
@@ -90,8 +95,11 @@ wr8 i8 addr (MainMem mem@{biosMapped,bios,rom,eram,wram,zram,gpu=gpu@{oam}}) =
               else id --NOTE unwritable, log this
           0x0F00 ->
             case 0x00F0.&.addr of
-              n | n >= 0x0080 -> _ { zram = S.replace i8 (0x7F .&. addr) zram }
+              0x0000 -> if addr == 0xFF0F then _ { intF = i8 } else id
               n | 0x0040 <= n && n <= 0x0070 -> _ { gpu = gpuWr8 i8 addr gpu }
+              n | n >= 0x0080 -> if addr /= 0xFFFF
+                then _ { zram = S.replace i8 (0x7F .&. addr) zram }
+                else _ { intE = i8 }
               otherwise -> id --NOTE log this
           otherwise -> id --NOTE log this
       otherwise -> id --NOTE log this
@@ -108,6 +116,9 @@ wr16 i16 addr mem =
 cleanMainMem :: MainMem
 cleanMainMem = initIOArea $ MainMem
   { biosMapped : false
+  , ime : true
+  , intE : 0
+  , intF : 0
   , rom  : A.singleton 0
   , eram : S.fromFoldable $ A.replicate 8192 0xFF
   , wram : S.fromFoldable $ A.replicate 8192  0
@@ -167,4 +178,21 @@ getGpu (MainMem mm) = mm.gpu
 setGpu :: Gpu -> MainMem -> MainMem
 setGpu gpu' (MainMem mm) = MainMem $ mm { gpu = gpu' }
 
+getIntE :: MainMem -> I8
+getIntE (MainMem mm) = mm.intE
+
+getIntF :: MainMem -> I8
+getIntF (MainMem mm) = mm.intF
+
+getIme :: MainMem -> Boolean
+getIme (MainMem mm) = mm.ime
+
+setIntE :: I8 -> MainMem -> MainMem
+setIntE val (MainMem mm) = MainMem $ mm { intE = val }
+
+setIntF :: I8 -> MainMem -> MainMem
+setIntF val (MainMem mm) = MainMem $ mm { intF = val }
+
+setIme :: Boolean -> MainMem -> MainMem
+setIme val (MainMem mm) = MainMem $ mm { ime = val }
 
