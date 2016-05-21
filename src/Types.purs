@@ -1,10 +1,14 @@
 module Types where
 
+import Prelude
 import Data.Sequence
+import Data.Array
 
 type Z80State =
   { mem :: Mem
   , totalM :: I8
+  , halt :: Boolean
+  , stop :: Boolean
   }
 
 type Mem =
@@ -13,23 +17,73 @@ type Mem =
   , svdRegs :: SavedRegs
   }
 
---NOTE; consider turning into a typeclass so that you can hide the
+--NOTE: consider turning into a typeclass so that you can hide the
 --underlying type that is used
-newtype MainMem = MainMem (Seq I16)
+-- NOTE: Change all read-only memory sections to be javascript arrays.
+-- Fill them at the beginning using an ST Array computation.
+newtype MainMem = MainMem
+  { biosMapped :: Boolean
+  , ime        :: Boolean -- Interrupts master enable flag
+  , intE       :: I8 -- Interrupt enable flags
+  , intF       :: I8 -- Interrupt flags
+  , bios       :: Array I8
+  , gpu        :: Gpu -- NOTE: might want to reconsider this
+  , rom        :: Array I8
+  , eram       :: Seq I8
+  , wram       :: Seq I8
+  , zram       :: Seq I8
+  }
+
+type Gpu = 
+  { mTimer   :: Int
+  , dispOn   :: Boolean
+  , bgOn     :: Boolean
+  , bgMap1   :: Boolean
+  , bgSet1   :: Boolean
+  , scrBuf   :: Seq I8
+  , currLine :: Int
+  , currPos  :: Int
+  , yScroll  :: Int
+  , xScroll  :: Int
+  , vblIntrr :: Boolean
+  , palette  :: Seq Color
+  , mode     :: GpuMode
+  , tiles    :: Tiles
+  , regs     :: Seq I8
+  , vram     :: Seq I8
+  , oam      :: Seq I8
+  }
+
+type Color =
+  { a :: I8
+  , r :: I8
+  , g :: I8
+  , b :: I8
+  }
+
+type Tiles = Seq Tile
+newtype Tile = Tile (Seq Int)
+
+
+data GpuMode = HBlank
+             | VBlank
+             | OamScan
+             | VramScan
+
+newtype OpCodeMap = OpCodeMap (Array (Z80State -> Z80State))
 
 type Regs =
-  { pc :: I16
-  , sp :: I16
-  , ime :: Boolean
-  , m :: I8
-  , a :: I8
-  , b :: I8
-  , c :: I8
-  , d :: I8
-  , e :: I8
-  , h :: I8
-  , l :: I8
-  , f :: I8
+  { pc  :: I16
+  , sp  :: I16
+  , m   :: I8
+  , a   :: I8
+  , b   :: I8
+  , c   :: I8
+  , d   :: I8
+  , e   :: I8
+  , h   :: I8
+  , l   :: I8
+  , f   :: I8
   }
 
 type GetReg = Regs -> I8
