@@ -4,94 +4,112 @@ import Prelude
 import Math
 import Data.Sequence as S
 import Data.Maybe
+import Data.Foldable
 import Data.Int.Bits
 import Data.Array as A
+import Data.Tuple as T
 
+import Gpu
 import Types
+import Utils
 
--- 8 Bit version
+--NOTE: optimization:
+--Most of the memory is not writable, so consider
+--saving it in a javascript array.
+--But let that be transparent behind the reading/writing
+--functions interface, i.e. decide where to read from depending
+--on the address that is given as input.
 
 -- 8 Bit version
 
 setRom :: Array I8 -> MainMem -> MainMem
 setRom rom (MainMem mem) = MainMem $ mem { rom = rom }
 
---NOTE: toggle inbios when pc == 0x0100
+--NOTE: toggle biosMapped when pc == 0x0100
 rd8 :: I16 -> MainMem -> I8
-rd8 addr (MainMem mem) =
-  fromMaybe 0 $ S.index addr mem
+rd8 addr (MainMem {biosMapped,bios,rom,eram,wram,zram, gpu = gpu@{vram,oam}}) =
+  case 0xF000.&.addr of
+    0x0000 -> if biosMapped && (addr < 0x0100)
+             then fromMaybe 0 $ bios A.!! addr -- NOTE log error
+             else fromMaybe 0 $ rom A.!! addr -- NOTE log error
+    n | 0x1000 <= n && n <= 0x7000 -> fromMaybe 0 $ rom A.!! addr -- NOTE log err
+    0x8000 -> vram !! (0x1FFF .&. addr)
+    0x9000 -> vram !! (0x1FFF .&. addr)
+    0xA000 -> eram !! (0x1FFF .&. addr)
+    0xB000 -> eram !! (0x1FFF .&. addr)
+    0xC000 -> wram !! (0x1FFF .&. addr)
+    0xD000 -> wram !! (0x1FFF .&. addr)
+    0xE000 -> wram !! (0x1FFF .&. addr)
+    0xF000 ->
+      case 0x0F00.&.addr of
+        n | n < 0x0E00 -> wram !! (0x1FFF .&. addr)
+        0x0E00 ->
+          if addr < 0xFEA0 then oam !! (0xFF .&. addr) else 0
+        0x0F00 ->
+          case 0x00F0.&.addr of
+            n | n >= 0x0080 -> zram !! (0x7F .&. addr)
+            n | 0x0040 <= n && n <= 0x0070 -> gpuRd8 addr gpu
+            --TODO temporary until key input is implemented
+            0x00 -> if addr == 0xFF00 then 0xDF else -1
+            otherwise -> -1 --NOTE log this
+        otherwise -> -1 --NOTE log this
+    otherwise -> -1 --NOTE log this
 
---NOTE make sure the significant byte part sits at a higher address
+--NOTE: make sure the significant byte part sits at a higher address
 rd16 :: I16 -> MainMem -> I16
-rd16 addr (MainMem mem) = (h `shl` 8) + l
+rd16 addr mem = (h `shl` 8) + l
  where
-  l = fromMaybe 0 $ S.index addr mem
-  h = fromMaybe 0 $ S.index (addr + 1) mem
+  l = rd8 addr mem
+  h = rd8 (addr + 1) mem
 
+--NOTE: temporary implementation. Writing to parts that are not writable
+--memory during execution should be treated with an error.
+--The initial writing to them should be ST array computations,
+--and not wr8 calls
 wr8 :: I8 -> I16 -> MainMem -> MainMem
-wr8 i8 addr (MainMem mem) = MainMem $ S.replace i8 addr mem
+wr8 i8 addr (MainMem mem@{biosMapped,bios,rom,eram,wram,zram,gpu=gpu@{oam}}) =
+  MainMem $ modifyMem mem
+ where
+  modifyMem =
+    case 0xF000.&.addr of
+      n | 0 <= n && n <= 7 -> id -- NOTE error can't write to bios or rom
+      --{ vram = S.replace i8 (0x1FFF .&. addr) vram }
+      0x8000 -> _ { gpu  = wrVRam i8 addr gpu }
+      0x9000 -> _ { gpu  = wrVRam i8 addr gpu }
+      0xA000 -> _ { eram = S.replace i8 (0x1FFF .&. addr) eram }
+      0xB000 -> _ { eram = S.replace i8 (0x1FFF .&. addr) eram }
+      0xC000 -> _ { wram = S.replace i8 (0x1FFF .&. addr) wram }
+      0xD000 -> _ { wram = S.replace i8 (0x1FFF .&. addr) wram }
+      0xE000 -> _ { wram = S.replace i8 (0x1FFF .&. addr) wram }
+      0xF000 ->
+        case 0x0F00.&.addr of
+          n | n < 0x0E00 -> _ { wram = S.replace i8 (0x1FFF .&. addr) wram }
+          0x0E00 ->
+            if addr < 0xFEA0
+              then _ { gpu = gpu { oam = S.replace i8 (0xFF .&. addr) oam } }
+              else id --NOTE unwritable, log this
+          0x0F00 ->
+            case 0x00F0.&.addr of
+              n | n >= 0x0080 -> _ { zram = S.replace i8 (0x7F .&. addr) zram }
+              n | 0x0040 <= n && n <= 0x0070 -> _ { gpu = gpuWr8 i8 addr gpu }
+              otherwise -> id --NOTE log this
+          otherwise -> id --NOTE log this
+      otherwise -> id --NOTE log this
 
 wr16 :: I16 -> I16 -> MainMem -> MainMem
-wr16 i16 addr (MainMem mem) = MainMem $
-      S.replace h (addr + 1)
-  <<< S.replace l addr
+wr16 i16 addr mem = 
+      wr8 h (addr + 1)
+  <<< wr8 l addr
    $  mem
  where
   h = 255 .&. (i16 `zshr` 8)
   l = 255 .&. i16
 
---16 Bit version
-
---NOTE consider splitting the mems to a generic number of chunks N
---that you can easily change, and then profile the performance for different N
---Or consider using array ST, if in need of better performance
-
---memory address
-{--0 1 2 3 4 ...--}
-{--0 0 1 1 2 ...--}
---seq index
-
-{--the quotient is the index--}
-{--the remainder is the offset inside the chunk--}
---Chunk size in bytes
-{--chkSz :: Int--}
-{--chkSz = 2--}
-
-{--cleanMainMem :: MainMem--}
-{--cleanMainMem = MainMem $ S.fromFoldable $ A.replicate size 0--}
- {--where--}
-  {--size = 65536 / chkSz--}
-
-{--rd8 :: I16 -> MainMem -> I8--}
-{--rd8 addr (MainMem mem) = lsByteOf $--}
-  {--(if isShiftNeeded then shiftByte else id) i16--}
- {--where--}
-  {--isShiftNeeded = addr `mod` 2 == 0--}
-  {--i16 = fromMaybe 0 $ S.index (addr / chkSz) mem--}
-  {--shiftByte x = x `zshr` 8--}
-  {--lsByteOf x = x .&. 255--}
-
-{----NOTE replace all 'fromMaybe's with an error mechanism that will make it easy--}
-{----to trace Nothing cases--}
-{--rd16 :: I16 -> MainMem -> I16--}
-{--rd16 addr (MainMem mem) = fromMaybe 0 $ S.index (addr / chkSz) mem--}
-
-{--wr8 :: I8 -> I16 -> MainMem -> MainMem--}
-{--wr8 i8 addr (MainMem mem) = MainMem $ S.adjust adjByte (addr / chkSz) mem--}
- {--where--}
-  {--adjByte = (_ .|. i8') <<<--}
-    {--(_ .&. if isShiftNeeded then 255 else 65535 - 255)--}
-  {--i8' = (if isShiftNeeded then shiftByte else id) i8--}
-  {--isShiftNeeded = addr `mod` 2 == 0--}
-  {--shiftByte x = x `shl` 8--}
-
-{--wr16 :: I16 -> I16 -> MainMem -> MainMem--}
-{--wr16 i16 addr (MainMem mem) = MainMem $ S.replace i16 (addr / chkSz) mem--}
 cleanMainMem :: MainMem
-cleanMainMem = initMem $ MainMem
+cleanMainMem = initIOArea $ MainMem
   { biosMapped : false
   , rom  : A.singleton 0
-  , eram : S.fromFoldable $ A.replicate 8192 0
+  , eram : S.fromFoldable $ A.replicate 8192 0xFF
   , wram : S.fromFoldable $ A.replicate 8192  0
   , zram : S.fromFoldable $ A.replicate 128 0
   , gpu  : cleanGpu
@@ -131,46 +149,22 @@ cleanMainMem = initMem $ MainMem
   ]
   }
  where
-  initMem =
-          wr8 0xD8 0xCFF7 
-      <<< wr8 0xD8 0xEFF7
-      <<< wr8 0x80 0xCFFB 
-      <<< wr8 0x80 0xEFFB
-      <<< wr8 0x3B 0xCFFD 
-      <<< wr8 0x3B 0xEFFD
-      <<< wr8 0x03 0xCFFE 
-      <<< wr8 0x03 0xEFFE
+  ioMem = A.zip (0xFF00 A... 0xFF7F) [
+    0xCF,0x00,0x7E,0xFF,0xAF,0x00,0x00,0xF8,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xE1,
+    0x80,0xBF,0xF3,0xFF,0xBF,0xFF,0x3F,0x00,0xFF,0xBF,0x7F,0xFF,0x9F,0xFF,0xBF,0xFF,
+    0xFF,0x00,0x00,0xBF,0x77,0xF3,0xF1,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x06,0xFE,0x0E,0x7F,0x00,0xFF,0x58,0xDF,0x00,0xEC,0x00,0xBF,0x0C,0xED,0x03,0xF7,
+    0x91,0x85,0x00,0x00,0x00,0x00,0x00,0xFC,0xFF,0xFF,0x00,0x00,0xFF,0x7E,0xFF,0xFE,
+    0xFF,0x00,0x00,0x00,0x00,0xFF,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xC0,0x00,0xC1,0x00,0x00,0x00,0x00,0x00,
+    0xF8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
+  ]
+  initIOArea mm = foldl (\acc (T.Tuple addr b) -> wr8 b addr acc) mm ioMem
 
-      <<< wr8 0x03 0xDF78 
+getGpu :: MainMem -> Gpu
+getGpu (MainMem mm) = mm.gpu
 
-      <<< wr8 0x80 0xFF40
-      <<< wr8 0x87 0xFF41
-      <<< wr8 0xE4 0xFF47
-      <<< wr8 0xE4 0xFF48
-      <<< wr8 0xC4 0xFF49
-      <<< wr8 0xFF 0xFF4C
-      <<< wr8 0x7E 0xFF4D
-      <<< wr8 0xFF 0xFF4E
-      <<< wr8 0xFE 0xFF4F
-      <<< wr8 0xFF 0xFF50
-      <<< wr8 0xFF 0xFF55
-      <<< wr8 0xC0 0xFF68
-      <<< wr8 0xC1 0xFF6A
-      <<< wr8 0xF8 0xFF70
-
-      <<< wr8 0x3E 0xFFB6
-      <<< wr8 0xC0 0xFFB7
-      <<< wr8 0xE0 0xFFB8
-      <<< wr8 0x46 0xFFB9
-      <<< wr8 0x3E 0xFFBA
-      <<< wr8 0x28 0xFFBB
-      <<< wr8 0x3D 0xFFBC
-      <<< wr8 0x20 0xFFBD
-      <<< wr8 0xFD 0xFFBE
-      <<< wr8 0xC9 0xFFBF
-      <<< wr8 0x37 0xFFC0
-      <<< wr8 0x1C 0xFFC1
-      <<< wr8 0x24 0xFFE1
-      <<< wr8 0x09 0xFFFF
+setGpu :: Gpu -> MainMem -> MainMem
+setGpu gpu' (MainMem mm) = MainMem $ mm { gpu = gpu' }
 
 
