@@ -62,6 +62,7 @@ cleanGpu =
   , currPos : 0 
   , yScroll : 0
   , xScroll : 0
+  , vblIntrr : false
   , palette : S.fromFoldable $ A.replicate 4 cleanColor
   , mode : OamScan
   , tiles : S.fromFoldable $ A.replicate 384 cleanTile
@@ -95,6 +96,7 @@ gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf} = gpu'
                 setScreen (seqToArray scrBuf) =<< getCanvas
                 return $ gp { scrBuf = S.empty :: S.Seq I8 --psc forces me
                             , mode = VBlank
+                            , vblIntrr = true
                             }
          in doOnLastLine gpu { mTimer = 0
                              , currLine = currLine + 1
@@ -112,7 +114,7 @@ gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf} = gpu'
                        , mode = OamScan
                        }
                 else id
-        return $ setOnLastLine gpu { mTimer = 0 , currLine = (trs "vbl" (currLine + 1)) }
+        return $ setOnLastLine gpu { mTimer = 0 , currLine = currLine + 1 }
       OamScan -> return gpu { mTimer = 0, mode = VramScan }
       VramScan -> return $ renderLine gpu { mTimer = 0, mode = HBlank }
 

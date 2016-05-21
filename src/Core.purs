@@ -55,7 +55,11 @@ step state@{ mem=mem@{regs} } =
 
   hndlGpu st = do
     gpu' <- gpuStep regs.m (getGpu st.mem.mainMem)
-    return $ st { mem = st.mem { mainMem = setGpu gpu' st.mem.mainMem } }
+    let intF' = (if gpu'.vblIntrr then (0x01 .|. _) else id) $ intF
+    return $ st { mem = st.mem { mainMem =
+          setIntF intF'
+      <<< setGpu (gpu' { vblIntrr = false })
+       $  st.mem.mainMem } }
 
   op = if shldHndlIntrr
     then interruptOp
