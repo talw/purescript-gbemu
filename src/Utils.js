@@ -4,6 +4,13 @@
 
 //exports.toHexStr=function(n) { return n.toString(16).toUpperCase(); }
 
+var counter = 0;
+
+exports.incDbgCnt=function(x) {
+  counter = counter + x;
+  return counter;
+}
+
 exports.toHexStr=function(padding) {
   return function(d) {
       var hex = d.toString(16).toUpperCase();
