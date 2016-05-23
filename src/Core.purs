@@ -42,59 +42,64 @@ run interval state = tailRecM go { intr : interval, st : state }
 --NOTE Reg r should be increased by 1?
 step :: forall e. Z80State -> Eff (canvas :: Canvas | e) Z80State
 step state@{ mem = oldMem@{regs = oldRegs} } =
-  hndlGpu <<< incTime <<< incPc oldRegs.pc <<< op $
+  handleGpu <<< incTime <<< incPc oldRegs.pc <<< op $
     traceState $ state
  where
   incTime st@{totalM} = st
     { totalM = st.totalM + st.mem.regs.m }
 
-  hndlGpu st = do
-    gpu' <- gpuStep st.mem.regs.m (getGpu st.mem.mainMem)
-    let intF' = (if gpu'.vblIntrr then (0x01 .|. _) else id) $ getIntF st.mem.mainMem
-    return $ st { mem = st.mem { mainMem =
-          setIntF intF'
-      <<< setGpu (gpu' { vblIntrr = false })
-       $  st.mem.mainMem } }
-
   op st = if shldHndlIntrr st
     then interruptOp st
     else regularOp st
-
-  shldHndlIntrr st = getIme st.mem.mainMem && intBits st /= 0
        
   regularOp st = getOpcode (opCode st) basicOps $ st
   opCode st = rd8 st.mem.regs.pc st.mem.mainMem
 
-  interruptOp :: Z80State -> Z80State
-  interruptOp st = snd res $
-    st { mem = st.mem {
-      mainMem = setIme false <<< setIntF (fst res $ getIntF st.mem.mainMem) $ st.mem.mainMem } }
-   where
-    res :: Tuple (Int -> Int) (Z80State -> Z80State)
-    res = fromMaybe (Tuple id id) mRes
-    mRes = getOnBit (intBits st) >>= \x -> case x of
-             1  -> Just $ Tuple (0xFE .&. _) (mm2op $ callRoutine 0x40)
-             2  -> Just $ Tuple (0xFD .&. _) (mm2op $ callRoutine 0x48)
-             4  -> Just $ Tuple (0xFB .&. _) (mm2op $ callRoutine 0x50)
-             8  -> Just $ Tuple (0xF7 .&. _) (mm2op $ callRoutine 0x58)
-             16 -> Just $ Tuple (0xEF .&. _) (mm2op $ callRoutine 0x60)
-             otherwise -> Nothing -- NOTE log this
-
-  intBits st = getIntE st.mem.mainMem .&. getIntF st.mem.mainMem
-
-  --NOTE is there a better way to set nested properties?
-  --consider checking the lens-equivalent in purescript.
-  incPc oldPc st =
-    if oldPc /= st.mem.regs.pc
-      then st
-      else
-        st {
-          mem = st.mem {
-            regs = st.mem.regs {
-              pc = 65535 .&. (st.mem.regs.pc + 1)
-            }
+--NOTE is there a better way to set nested properties?
+--consider checking the lens-equivalent in purescript.
+incPc :: I8 -> Z80State -> Z80State
+incPc oldPc st =
+  if oldPc /= st.mem.regs.pc
+    then st
+    else
+      st {
+        mem = st.mem {
+          regs = st.mem.regs {
+            pc = 65535 .&. (st.mem.regs.pc + 1)
           }
         }
+      }
+
+handleGpu :: forall e. Z80State -> Eff (canvas :: Canvas | e) Z80State
+handleGpu st = do
+  gpu' <- gpuStep st.mem.regs.m (getGpu st.mem.mainMem)
+  let intF' = (if gpu'.vblIntrr then (0x01 .|. _) else id) $ getIntF st.mem.mainMem
+  return $ st { mem = st.mem { mainMem =
+        setIntF intF'
+    <<< setGpu (gpu' { vblIntrr = false })
+     $  st.mem.mainMem } }
+
+interruptOp :: Z80State -> Z80State
+interruptOp st = snd res $
+  st { mem = st.mem {
+    mainMem = setIme false <<< setIntF (fst res $ getIntF st.mem.mainMem) $ st.mem.mainMem } }
+ where
+  res :: Tuple (Int -> Int) (Z80State -> Z80State)
+  res = fromMaybe (Tuple id id) mRes
+  mRes = getOnBit (interruptBits st) >>= \x -> case x of
+           1  -> Just $ Tuple (0xFE .&. _) (mm2op $ callRoutine 0x40)
+           2  -> Just $ Tuple (0xFD .&. _) (mm2op $ callRoutine 0x48)
+           4  -> Just $ Tuple (0xFB .&. _) (mm2op $ callRoutine 0x50)
+           8  -> Just $ Tuple (0xF7 .&. _) (mm2op $ callRoutine 0x58)
+           16 -> Just $ Tuple (0xEF .&. _) (mm2op $ callRoutine 0x60)
+           otherwise -> Nothing -- NOTE log this
+
+interruptBits :: Z80State -> I8
+interruptBits st = getIntE st.mem.mainMem .&. getIntF st.mem.mainMem
+
+shldHndlIntrr :: Z80State -> Boolean
+shldHndlIntrr st = getIme st.mem.mainMem && interruptBits st /= 0
+
 
 cleanState :: Z80State
 cleanState = 
