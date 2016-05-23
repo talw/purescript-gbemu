@@ -99,7 +99,7 @@ step state@{ mem = oldMem@{regs = oldRegs} } =
 cleanState :: Z80State
 cleanState = 
   { mem : cleanMem
-  , totalM : 0
+  , totalM : 1
   , halt : false
   , stop : false
   }
@@ -113,18 +113,18 @@ cleanMem =
 
 cleanRegs :: Regs
 cleanRegs =
-  { pc : 0x0200
-  , sp : 0xCFF7
-  , ime : true
-  , m  : 0
-  , a  : 0
-  , b  : 0
-  , c  : 0
-  , d  : 0
-  , e  : 0xD8
-  , h  : 0x97
-  , l  : 0xFF
-  , f  : 0x80
+  { pc    : 0x0101
+  , sp    : 0xFFFE
+  , m     : 0
+  , a     : 0x01
+  , b     : 0
+  , c     : 0x13
+  , d     : 0
+  , e     : 0xD8
+  , h     : 0x01
+  , l     : 0x4D
+  , f     : 0xB0
+  , brTkn : false
   }
 
 cleanSavedRegs :: SavedRegs
