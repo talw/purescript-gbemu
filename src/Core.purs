@@ -34,7 +34,7 @@ run interval state = tailRecM go { intr : interval, st : state }
   go { st = st@{stop = true} } = return $ Right state
   go { intr, st } | intr <= 0 = return $ Right state
   go { intr, st } = do
-    st' <- step st
+    st' <- (if shldTrc st then trace "-------step-------" \_ -> step st else step st)
     let elapsed = st'.totalM - st.totalM
     return $ Left { intr : (intr - elapsed), st : st' }
 
@@ -42,18 +42,31 @@ run interval state = tailRecM go { intr : interval, st : state }
 --NOTE Reg r should be increased by 1?
 step :: forall e. Z80State -> Eff (canvas :: Canvas | e) Z80State
 step state@{ mem = oldMem@{regs = oldRegs} } =
-  handleGpu <<< incTime <<< incPc oldRegs.pc <<< op $
+  handleGpu <<< incTime oldRegs.pc <<< incPc oldRegs.pc <<< op $
     traceState $ state
  where
-  incTime st@{totalM} = st
-    { totalM = st.totalM + st.mem.regs.m }
 
   op st = if shldHndlIntrr st
     then interruptOp st
     else regularOp st
-       
-  regularOp st = getOpcode (opCode st) basicOps $ st
-  opCode st = rd8 st.mem.regs.pc st.mem.mainMem
+  regularOp st = getCpuOp (getCurrOpCode st) basicOps $ st
+  getCurrOpCode st = rd8 st.mem.regs.pc st.mem.mainMem
+
+incTime :: I8 -> Z80State -> Z80State
+incTime oldPc st@{totalM} = st
+  { totalM = st.totalM + opTiming }
+ where
+  opTiming = getOpTiming addr opTimingTable
+  addr = if opCode == 0xCB
+    then rd8 (oldPc+1) st.mem.mainMem
+    else opCode
+  opTimingTable = if opCode == 0xCB
+    then cbOpTimings 
+    else
+      if st.mem.regs.brTkn
+        then branchBasicOpTimings
+        else basicOpTimings
+  opCode = rd8 oldPc st.mem.mainMem
 
 --NOTE is there a better way to set nested properties?
 --consider checking the lens-equivalent in purescript.
@@ -69,6 +82,7 @@ incPc oldPc st =
           }
         }
       }
+
 
 handleGpu :: forall e. Z80State -> Eff (canvas :: Canvas | e) Z80State
 handleGpu st = do
@@ -164,22 +178,24 @@ traceState state@{ mem = oldMem@{regs = oldRegs} } =
   {--condTr shldTrc (\_ -> "getOnBit: " ++ show (getOnBit intBits)) $--}
   {--condTr shldTrc (\_ -> "shldHndlIntrr: " ++ show (shldHndlIntrr state)) $--}
   {--condTr shldTrc (\_ -> "intF after interruptop: " ++ toHexStr 2 (getIntF (interruptOp state).mem.mainMem)) $--}
-  condTr shldTrc (\_ -> regsStr oldRegs) $
-  {--condTr shldTrc (\_ -> rd8RangeStr "FF85" 0xFF85 0xFF85 mem) $--}
+  {--condTr (shldTrc state) (\_ -> regsStr oldRegs) $--}
+  condTr (shldTrc state) (\_ -> rd8RangeStr "FF44" 0xFF44 0xFF44 state.mem) $
   state
- where
-  shldTrc = true
-  {--shldTrc = state.totalM >= 125000--}
-  {--shldTrc = oldRegs.pc == 0x0371 || oldRegs.pc == 0x0200--}
-  {--shldTrc2 = regs.pc == 0x0407--}
+
+shldTrc :: Z80State -> Boolean
+{--shldTrc state = state.totalM >= 123000--}
+shldTrc state = true
+{--shldTrc state = state.mem.regs.pc == 0x0200--}
+{--shldTrc = oldRegs.pc == 0x0371 || oldRegs.pc == 0x0200--}
 
 regsStr :: Regs -> String
-regsStr regs = "af: " ++ af
-          ++ "\nbc: " ++ bc
-          ++ "\nde: " ++ de
-          ++ "\nhl: " ++ hl
-          ++ "\nsp: " ++ sp
-          ++ "\npc: " ++ pc
+regsStr regs = "af: "    ++ af
+          ++ "\nbc: "    ++ bc
+          ++ "\nde: "    ++ de
+          ++ "\nhl: "    ++ hl
+          ++ "\nsp: "    ++ sp
+          ++ "\npc: "    ++ pc
+          ++ "\nbrTkn: " ++ show regs.brTkn
  where
   af = toHexStr 4 $ joinRegs a f regs
   bc = toHexStr 4 $ joinRegs b c regs

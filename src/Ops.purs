@@ -100,7 +100,7 @@ addSPToHL regs =
   hl = joinRegs h l regs
 
 addI16s :: I8 -> I16 -> I16 -> { res :: I16, flags :: I8 }
-addI16s oldFlags x1 x2 = { res, flags }
+addI16s x1 x2 oldFlags = { res, flags }
  where
   flags =  setCarryFlag16 sum
         $  oldFlags
@@ -425,7 +425,8 @@ incHLMem = incDecHLMem incI8
 
 --DEC (HL)
 decHLMem :: Mem -> Mem
-decHLMem = incDecHLMem decI8
+decHLMem mem = res { regs = adjFlag subtractionFlag res.regs }
+ where res = incDecHLMem decI8 mem 
 
 incDecHLMem :: (I8 -> { res :: I8, carry :: Boolean })
             -> Mem -> Mem
@@ -469,8 +470,8 @@ ldSPFromHL regs  =
   regs { sp = sp', m = 2 }
  where sp' = joinRegs h l regs
   
-ldSPFromImm :: Mem -> Regs
-ldSPFromImm { mainMem, regs } = 
+ldSPFromImmMem :: Mem -> Regs
+ldSPFromImmMem { mainMem, regs } = 
   regs { sp = sp', pc = regs.pc + 3, m = 3 }
  where sp' = rd16 (regs.pc+1) mainMem
   
@@ -675,16 +676,15 @@ popReg setMsByteReg setLsByteReg { mainMem, regs = regs@{sp} }
 jumpRelImmFlag :: Boolean -> I8 -> Mem -> Regs
 jumpRelImmFlag inverse flag mem@{mainMem, regs} =
   if inverse `xor` isSetFlag flag regs.f
-    then jumpRelImm mem
-    else regs { pc = regs.pc + 2, m = 2 }
+    then (jumpRelImm mem) { brTkn = true }
+    else regs { pc = regs.pc + 2, brTkn = false, m = 2 }
 
 --JR n
 jumpRelImm :: Mem -> Regs
 jumpRelImm { mainMem, regs } =
   regs { pc = pc', m = 3 }
  where
-  --NOTE: is it necessary to abs the immediate?
-  pc' = addOrSubImm $ regs.pc + 2 --absI8 imm
+  pc' = addOrSubImm $ regs.pc + 2
   imm = rd8 (regs.pc+1) mainMem
   absImm = absI8 imm
   addOrSubImm = if absImm == imm
@@ -697,8 +697,8 @@ jumpRelImm { mainMem, regs } =
 jumpImmFlag :: Boolean -> I8 -> Mem -> Regs
 jumpImmFlag inverse flag mem@{mainMem,regs} =
   if inverse `xor` isSetFlag flag regs.f
-    then (jumpImm mem) { m = 4 }
-    else regs { pc = regs.pc + 3, m = 3 }
+    then (jumpImm mem) { brTkn = true, m = 4 }
+    else regs { pc = regs.pc + 3, brTkn = false, m = 3 }
 
 -- JP nn
 jumpImm :: Mem -> Regs
@@ -718,8 +718,8 @@ jumpHL regs = regs { pc = pc', m = 1 }
 callImmFlag :: Boolean -> I8 -> Mem -> Mem
 callImmFlag inverse flag mem@{mainMem,regs} = 
   if inverse `xor` isSetFlag flag regs.f
-    then callImm mem
-    else mem { regs = regs {pc = regs.pc + 3, m = 3} }
+    then adjRegs (_ { brTkn = true }) (callImm mem)
+    else mem { regs = regs {pc = regs.pc + 3, brTkn = false, m = 3} }
 
 -- Call nn
 callImm :: Mem -> Mem
@@ -736,8 +736,8 @@ callImm mem@{mainMem,regs} =
 retFlag :: Boolean -> I8 -> Mem -> Regs
 retFlag inverse flag mem@{mainMem,regs} = 
   if inverse `xor` isSetFlag flag regs.f
-    then ret mem
-    else regs { m = 1 }
+    then (ret mem) { brTkn = true }
+    else regs { brTkn = false, m = 1 }
 
 -- RETI
 --NOTE; not certain restoreRegs is necessary here
@@ -761,7 +761,7 @@ callRoutine addr { mainMem, regs, svdRegs } =
   { mainMem : mainMem', regs : regs', svdRegs : saveRegs regs svdRegs }
  where
   regs' = regs { sp = regs.sp - 2, pc = addr, m = 3 }
-  mainMem' = wr16 regs.pc (regs.sp - 2) mainMem
+  mainMem' = wr16 (regs.pc+1) (regs.sp - 2) mainMem
 
 -- Misc.
 -- =====
@@ -838,17 +838,21 @@ halt state@{mem=mem@{regs}} =
 
 --DI
 --EI
-setInterrupts :: Boolean -> Regs -> Regs
-setInterrupts enable = _ { ime = enable, m = 1 }
+setInterrupts :: Boolean -> Mem -> Mem
+setInterrupts enable mem@{ mainMem, regs } =
+  mem { mainMem = setIme enable mainMem
+      , regs = regs { m = 1 }
+      }
 
 --Extended Ops
 execExtOps :: Array (Z80State -> Z80State)
            -> Z80State -> Z80State
-execExtOps opsMap state@{ mem = mem@{mainMem,regs} } = extOp state'
+execExtOps opsMap state@{ mem = mem@{mainMem,regs} } =
+  state' { mem = mem { regs = regs { pc = 65535 .&. (regs.pc + 2) } } }
  where
-  --NOTE replace toMaybe, with something to log errors
-  extOp = getOpcode opCode opsMap 
-  state' = state { mem = mem { regs = regs { pc = 65535 .&. (regs.pc + 2) } } }
+  state' = extOp state
+  extOp = getCpuOp opCode opsMap 
+  {--state' = state { mem = mem { regs = regs { pc = 65535 .&. (regs.pc + 2) } } }--}
   opCode = rd8 (regs.pc+1) mainMem
 
 -- Helpers
@@ -924,8 +928,11 @@ setHalfCarryFlag reg1 reg2 sum =
  where res = 0x10 .&. (reg1 .^. reg2 .^. sum)
 
 --NOTE: replace fromMaybe with an error report mechanism to trace bad cases
-getOpcode :: Int -> Array (Z80State -> Z80State) -> Z80State -> Z80State
-getOpcode ix table = fromMaybe id $ table A.!! ix
+getCpuOp :: Int -> Array (Z80State -> Z80State) -> Z80State -> Z80State
+getCpuOp ix table = fromMaybe id $ table A.!! ix
+
+getOpTiming :: Int -> Array Int -> Int
+getOpTiming ix table = fromMaybe (-1) $ table A.!! ix
 
 xor :: Boolean -> Boolean -> Boolean
 xor true x = not x
