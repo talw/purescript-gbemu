@@ -17,6 +17,12 @@ type Mem =
   , svdRegs :: SavedRegs
   }
 
+adjMainMem :: (MainMem -> MainMem) -> Mem -> Mem
+adjMainMem f m = m { mainMem = f m.mainMem }
+
+adjRegs :: (Regs -> Regs) -> Mem -> Mem
+adjRegs f m = m { regs = f m.regs }
+
 --NOTE: consider turning into a typeclass so that you can hide the
 --underlying type that is used
 -- NOTE: Change all read-only memory sections to be javascript arrays.
@@ -35,23 +41,24 @@ newtype MainMem = MainMem
   }
 
 type Gpu = 
-  { mTimer   :: Int
-  , dispOn   :: Boolean
-  , bgOn     :: Boolean
-  , bgMap1   :: Boolean
-  , bgSet1   :: Boolean
-  , scrBuf   :: Seq I8
-  , currLine :: Int
-  , currPos  :: Int
-  , yScroll  :: Int
-  , xScroll  :: Int
-  , vblIntrr :: Boolean
-  , palette  :: Seq Color
-  , mode     :: GpuMode
-  , tiles    :: Tiles
-  , regs     :: Seq I8
-  , vram     :: Seq I8
-  , oam      :: Seq I8
+  { mTimer    :: Int
+  , dispOn    :: Boolean
+  , bgOn      :: Boolean
+  , bgMap1    :: Boolean
+  , bgSet1    :: Boolean
+  , scrBuf    :: Seq I8
+  , vblFinish :: Boolean
+  , currLine  :: Int
+  , currPos   :: Int
+  , yScroll   :: Int
+  , xScroll   :: Int
+  , vblIntrr  :: Boolean
+  , palette   :: Seq Color
+  , mode      :: GpuMode
+  , tiles     :: Tiles
+  , regs      :: Seq I8
+  , vram      :: Seq I8
+  , oam       :: Seq I8
   }
 
 type Color =
@@ -69,6 +76,7 @@ data GpuMode = HBlank
              | VBlank
              | OamScan
              | VramScan
+derive instance eqGpuMode :: Eq GpuMode
 
 newtype OpCodeMap = OpCodeMap (Array (Z80State -> Z80State))
 
@@ -84,6 +92,7 @@ type Regs =
   , h   :: I8
   , l   :: I8
   , f   :: I8
+  , brTkn :: Boolean
   }
 
 type GetReg = Regs -> I8

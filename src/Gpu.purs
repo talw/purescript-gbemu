@@ -52,19 +52,20 @@ resetScreen = setScreen arr =<< getCanvas
 
 cleanGpu :: Gpu
 cleanGpu =
-  { mTimer : 0
-  , dispOn : false
-  , bgOn : false
+  { mTimer : modeDuration VBlank - 16
+  , dispOn : true
+  , bgOn : true
   , bgMap1 : false
-  , bgSet1 : false
+  , bgSet1 : true
   , scrBuf : S.empty 
-  , currLine : 0
+  , vblFinish : true
+  , currLine : pixHeight + 10 - 1
   , currPos : 0 
   , yScroll : 0
   , xScroll : 0
   , vblIntrr : false
   , palette : S.fromFoldable $ A.replicate 4 cleanColor
-  , mode : OamScan
+  , mode : VBlank
   , tiles : S.fromFoldable $ A.replicate 384 cleanTile
   , regs : S.fromFoldable $ A.replicate 0x40 0
   , vram : S.fromFoldable $ A.replicate 8192 0
