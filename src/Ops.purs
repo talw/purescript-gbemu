@@ -59,7 +59,7 @@ addXCarryToA x regs =
  where
   --Overriding addI8's half-carry flag because it used regs.a+carry
   --Which is essential for the other flags, but not for this one.
-  f' = setHalfCarryFlag x regs.a sum.res sum.flags
+  f' = setHalfCarryFlag8 x regs.a sum.res sum.flags
   sum = addI8s (regs.a + carry) x
   carry = if regs.f .&. carryFlag /= 0 then 1 else 0
 
@@ -76,7 +76,7 @@ addI8s x1 x2 = { res , flags }
  where
   flags =  testZeroFlag res
        .|. testCarryFlag8 sum
-       .|. testHalfCarryFlag x1 x2 res
+       .|. testHalfCarryFlag8 x1 x2 res
   res = sum .&. 255
   sum = x1 + x2
 
@@ -152,7 +152,7 @@ subXCarryFromA :: I8 -> Regs -> Regs
 subXCarryFromA x regs =
   regs {a = diff.res, f = f', m = 1}
  where
-  f' = setHalfCarryFlag x regs.a diff.res diff.flags
+  f' = setHalfCarryFlag8 x regs.a diff.res diff.flags
   diff = subI8s (regs.a - carry) x
   carry = if regs.f .&. carryFlag /= 0 then 1 else 0
 
@@ -162,7 +162,7 @@ subI8s x1 x2 = { res , flags }
   flags =  testZeroFlag res
        .|. testNegCarryFlag diff
        .|. subtractionFlag
-       .|. testHalfCarryFlag x1 x2 res
+       .|. testHalfCarryFlag8 x1 x2 res
   res = diff .&. 255
   diff = x1 - x2
 
@@ -381,9 +381,12 @@ decReg getReg setReg regs = regs' { f = setFlag subtractionFlag regs'.f }
 incDecReg :: (I8 -> { res :: I8, carry :: Boolean })
           -> GetReg -> SetReg -> Regs -> Regs
 incDecReg op getReg setReg regs =
-  setReg inced .res regs {f = testZeroFlag inced.res, m = 1}
+  setReg inced.res regs {f = f', m = 1}
  where
-  inced  = op $ getReg regs
+  f' =  testZeroFlag inced.res
+    .|. testHalfCarryFlag8 1 targetReg inced.res
+  inced = op targetReg
+  targetReg = getReg regs
 
 --INC RR
 incRegWithCarry :: GetReg -> GetReg -> SetReg -> SetReg
@@ -539,11 +542,13 @@ ldRegFromMem setReg addr { mainMem, regs } =
 --LD HL,SP|n|
 ldHLFromSPImm :: Mem -> Regs
 ldHLFromSPImm  mem@{ regs, mainMem } =
-  regs {h = split.ms, l = split.ls, pc = regs.pc + 2, m = 3}
+  regs {h = split.ms, l = split.ls, pc = regs.pc + 2, f = f', m = 3}
  where
-  split = splitI16 x
-  x = (absI8 imm + regs.sp) .&. 0xFFFF
-  imm = rd8 (regs.pc+1) mainMem
+  f' =  testHalfCarryFlag16 immAbs regs.sp sum
+    .|. testHalfCarryFlag8 immAbs regs.sp sum
+  split = splitI16 sum
+  sum = (immAbs + regs.sp) .&. 0xFFFF
+  immAbs = absI8 $ rd8 (regs.pc+1) mainMem
 
 --LDI (HL),A
 ldMemHLFromRegInc :: GetReg -> Mem -> Mem
@@ -918,14 +923,18 @@ setCarryFlag16 x = if x > 0xFFFF
 testNegCarryFlag :: Int -> I8
 testNegCarryFlag reg = if reg < 0 then carryFlag else 0
 
-testHalfCarryFlag :: I8 -> I8 -> I8 -> I8
-testHalfCarryFlag reg1 reg2 sum = if res /= 0 then halfCarryFlag else 0
+testHalfCarryFlag8 :: I8 -> I8 -> I8 -> I8
+testHalfCarryFlag8 reg1 reg2 sum = if res /= 0 then halfCarryFlag else 0
  where res = 0x10 .&. (reg1 .^. reg2 .^. sum)
 
-setHalfCarryFlag :: I8 -> I8 -> I8 -> I8 -> I8
-setHalfCarryFlag reg1 reg2 sum =
+setHalfCarryFlag8 :: I8 -> I8 -> I8 -> I8 -> I8
+setHalfCarryFlag8 reg1 reg2 sum =
   if res /= 0 then (_ .|. halfCarryFlag) else (_ .&. cmplHalfCarryFlag)
  where res = 0x10 .&. (reg1 .^. reg2 .^. sum)
+
+testHalfCarryFlag16 :: I16 -> I16 -> I16 -> I8
+testHalfCarryFlag16 reg1 reg2 sum = if res /= 0 then carryFlag else 0
+ where res = 0x0100 .&. (reg1 .^. reg2 .^. sum)
 
 --NOTE: replace fromMaybe with an error report mechanism to trace bad cases
 getCpuOp :: Int -> Array (Z80State -> Z80State) -> Z80State -> Z80State
