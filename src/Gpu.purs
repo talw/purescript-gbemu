@@ -75,15 +75,12 @@ cleanGpu =
 cleanColor :: Color
 cleanColor = {a:0,r:0,g:0,b:0}
 
-getCtrlFlags :: Gpu -> I8
-getCtrlFlags gpu =  cf gpu.bgOn   0x01
-                .|. cf gpu.bgMap1 0x08
-                .|. cf gpu.bgSet1 0x10
-                .|. cf gpu.dispOn 0x80
- where cf bool flag = if bool then flag else 0x00
-
+--NOTE consider doing nothing if dispOn is false
 gpuStep :: forall e. I8 -> Gpu -> Eff (canvas :: Canvas | e) Gpu
-gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf} = gpu'
+gpuStep _ gpu@{dispOn = false} = return gpu
+
+gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf,vblFinish} =
+  map hblCurrLineEarlyReset gpu'
  where
   mTimer' = mTimer + mReg
 
@@ -99,7 +96,7 @@ gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf} = gpu'
                             , mode = VBlank
                             , vblIntrr = true
                             }
-         in doOnLastLine gpu { mTimer = 0
+         in doOnLastLine $ gpu { mTimer = mTimer' - modeDuration HBlank
                              , currLine = currLine + 1
                              , currPos = currPos + bytesWidth
                              , mode = OamScan
@@ -107,22 +104,31 @@ gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf} = gpu'
         
       VBlank -> do
         let setOnLastLine =
-              if currLine == pixHeight + 10 - 1
+              if vblFinish
                 -- 10 increments after last line of 143
-                then _ { mTimer = 0
+                then _ { vblFinish = false
                        , currLine = 0
                        , currPos = 0
                        , mode = OamScan
                        }
                 else id
-        return $ setOnLastLine gpu { mTimer = 0 , currLine = currLine + 1 }
-      OamScan -> return gpu { mTimer = 0, mode = VramScan }
-      VramScan -> return $ renderLine gpu { mTimer = 0, mode = HBlank }
+        return $ setOnLastLine gpu { mTimer = mTimer' - modeDuration VBlank , currLine = currLine + 1 }
+      OamScan -> return gpu { mTimer = mTimer' - modeDuration OamScan, mode = VramScan }
+      VramScan ->
+        let renderOrNot = if gpu.dispOn && gpu.bgOn then renderLine else id
+        in return $ renderOrNot gpu { mTimer = mTimer' - modeDuration VramScan, mode = HBlank }
 
+hblCurrLineEarlyReset :: Gpu -> Gpu
+hblCurrLineEarlyReset gpu@{mTimer = mTimer', currLine, mode} =
+  if mode == VBlank && mTimer' >= 4 && currLine == pixHeight + 10 - 1
+    then gpu { currLine = 0, vblFinish = true }
+    else gpu
+
+--Change condition of renderOrNot once object rendering is added
+--And perhaps rename the current renderLine to renderBG and have renderLine
+--be what calls renderBG and renderFG
 renderLine :: Gpu -> Gpu
 renderLine gpu = gpu { scrBuf = foldRes.scrBuf }
-  {--canvas <- getCanvas--}
-  {--setLine (seqToArray foldRes.cnvsLine) gpu.currLine canvas--}
  where
   foldRes = foldl updateCanvas
                   { scrBuf:gpu.scrBuf, tho:tileHorizOff
@@ -171,7 +177,7 @@ renderLine gpu = gpu { scrBuf = foldRes.scrBuf }
 --use set #1? (which is from -128 to 127)
 getTileIx :: Gpu -> I16 -> I8
 getTileIx { vram, bgSet1 } addr = 
-  if bgSet1 && tix < 128 then tix + 256 else tix
+  if (not bgSet1) then tix + 256 else tix
  where tix = vram !! addr
 
 --TODO add a generic register sequence
@@ -186,25 +192,14 @@ gpuRd8 addr gpu = case addr of
 
 gpuWr8 :: I8 -> I16 -> Gpu -> Gpu
 gpuWr8 i8 addr gpu = setRegs $ case addr of
-  0xFF40 -> setCtrlFlags
+  0xFF40 -> setCtrlFlags i8 gpu
   0xFF42 -> gpu { yScroll = i8 }
   0xFF43 -> gpu { xScroll = i8 }
   0xFF44 -> gpu { currLine = i8 }
   0xFF47 -> setPalette  
   otherwise -> gpu
  where
-  --NOTE: Might be redundant, consider moving this to otherwise case
-  --if it helps performance.
   setRegs = _ { regs = S.replace i8 (addr - 0xFF40) gpu.regs }
-
-  setCtrlFlags = gpu
-    { bgOn   = isFlagSet 0x01
-    , bgMap1 = isFlagSet 0x08
-    , bgSet1 = isFlagSet 0x10
-    , dispOn = isFlagSet 0x80
-    }
-  isFlagSet flag = (flag .&. i8) /= 0
-
   setPalette = gpu { palette = foldl stPl S.empty (0 A... 3) }
   --Every color is 2 bits wide
   --NOTE should this be reversed?
@@ -215,7 +210,47 @@ gpuWr8 i8 addr gpu = setRegs $ case addr of
     3 -> S.snoc plt {a:0  ,r:0  ,g:0  ,b:255}
     otherwise -> plt -- NOTE log this
 
---NOTE gpuwr8 should call this function depending on the addr prefix
+getCtrlFlags :: Gpu -> I8
+getCtrlFlags gpu =  cf gpu.bgOn   0x01
+                .|. cf gpu.bgMap1 0x08
+                .|. cf gpu.bgSet1 0x10
+                .|. cf gpu.dispOn 0x80
+ where cf bool flag = if bool then flag else 0x00
+
+setCtrlFlags :: I8 -> Gpu -> Gpu
+setCtrlFlags ctrlFlags gpu = enableDisableOrNot gpu.dispOn dispOn' $
+  gpu
+    { bgOn   = isFlagSet 0x01
+    , bgMap1 = isFlagSet 0x08
+    , bgSet1 = isFlagSet 0x10
+    , dispOn = dispOn'
+    }
+ where
+  isFlagSet flag = (flag .&. ctrlFlags) /= 0
+  dispOn' = isFlagSet 0x80
+
+  enableDisableOrNot true false = disableGpu
+  enableDisableOrNot false true = enableGpu
+  enableDisableOrNot _ _ = id
+
+disableGpu :: Gpu -> Gpu
+disableGpu gpu = gpu
+  { mTimer = 0
+  , currLine = 0
+  , mode = HBlank
+  , vblFinish = false
+  , dispOn = false
+  }
+
+enableGpu :: Gpu -> Gpu
+enableGpu gpu = gpu
+  { mTimer = 0
+  , mode = OamScan
+  , dispOn = true
+  }
+
+
+
 wrVRam :: I8 -> I16 -> Gpu -> Gpu
 wrVRam i8 addr gpu@{vram,tiles} = gpu { vram = vram', tiles = tiles' }
  where
