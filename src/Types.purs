@@ -83,7 +83,6 @@ newtype OpCodeMap = OpCodeMap (Array (Z80State -> Z80State))
 type Regs =
   { pc  :: I16
   , sp  :: I16
-  , m   :: I8
   , a   :: I8
   , b   :: I8
   , c   :: I8
