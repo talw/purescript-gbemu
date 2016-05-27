@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "Game Boy emulation written in Purescript",
   "main": "index.js",
-  "dependencies": {},
+  "dependencies": {
+    "xhr2":  "^0.1.3"
+  },
   "devDependencies": {
     "bower": "^1.7.1",
     "pulp": "^5.0.2",
@@ -12,5 +14,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Tal Walter",
+  "author": "Tal Walter"
 }
