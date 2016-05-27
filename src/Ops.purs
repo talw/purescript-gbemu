@@ -66,10 +66,12 @@ addXCarryToA x regs =
 --ADD SP,|n|
 addImmToSP :: Mem -> Regs
 addImmToSP { regs, mainMem } =
-  regs {sp = sp', pc = regs.pc + 2}
+  regs {sp = sp', pc = regs.pc + 2, f = f'}
  where
-  sp' = (absI8 imm + regs.sp) .&. 0xFFFF
-  imm = rd8 (regs.pc+1) mainMem
+  f' =  testHalfCarryFlag16 immAbs regs.sp sp'
+    .|. testHalfCarryFlag8 immAbs regs.sp sp'
+  sp' = (immAbs + regs.sp) .&. 0xFFFF
+  immAbs = absI8 $ rd8 (regs.pc+1) mainMem
 
 addI8s :: I8 -> I8 -> { res :: I8, flags :: I8 }
 addI8s x1 x2 = { res , flags }
@@ -102,11 +104,16 @@ addSPToHL regs =
 addI16s :: I8 -> I16 -> I16 -> { res :: I16, flags :: I8 }
 addI16s x1 x2 oldFlags = { res, flags }
  where
-  flags =  setCarryFlag16 sum
-        $  oldFlags
-       .|. testZeroFlag res
+  {--flags =  setCarryFlag16 sum--}
+        {--$  oldFlags--}
+       {--.|. testZeroFlag res--}
+  flags =  testCarryFlag16 sum
+       .|. testWeirdHalfCarryFlag16 x1 x2 res
+       .|. zeroFlag .&. oldFlags
+        
   res = sum .&. 0xFFFF
   sum = x1 + x2
+
 
 -- Subtractions
 -- ============
@@ -228,8 +235,12 @@ boolOpXIntoA op x regs =
 
 --CPL
 cmplA :: Regs -> Regs
-cmplA regs = regs { a = a', f = testZeroFlag a' }
- where a' = 255 .^. regs.a
+cmplA regs = regs { a = a', f = f' }
+ where
+   a' = 255 .^. regs.a
+   f' =  setFlag halfCarryFlag
+     <<< setFlag subtractionFlag
+      $  regs.f
 
 --BIT N,R
 testBitNOfReg :: I8 -> GetReg -> Regs -> Regs
@@ -246,6 +257,7 @@ testBitNOfX :: Int -> I8 -> Regs -> Regs
 testBitNOfX n x regs = regs { f = f' }
  where
   f' =  setZeroFlag bitTest
+     $  unsetFlag subtractionFlag
      $  halfCarryFlag
     .|. (regs.f .&. carryFlag) -- NOTE: should it be 0x1F instead?
   bitTest = x .&. (1 `shl` n)
@@ -307,18 +319,18 @@ rotX :: {dir::Dir,isCarryRot::Boolean,isCB::Boolean}
 rotX { dir, isCarryRot, isCB } x oldFlags = { res, flags }
  where
   res = 255 .&. (currCarry + (x `shiftFunc` 1))
-  -- RotA basic, use old flags, RotR CB, start fresh with zeroFlag
   flags = setNewCarry
-    $ if isCB then testZeroFlag res else oldFlags
+    $ if isCB then testZeroFlag res else 0
+  setNewCarry = if isNewCarry
+    then (carryFlag .|. _)
+    else (cmplCarryFlag .&. _)
+
   currCarry = if   (not isCarryRot) && (oldFlags .&. carryFlag /= 0)
                 || (isCarryRot      && isNewCarry)
     then case dir of
       LeftD -> 1
       RightD -> 0x80 
     else 0
-  setNewCarry = if isNewCarry
-    then (carryFlag .|. _)
-    else (cmplCarryFlag .&. _)
   isNewCarry = x .&. edgeBit /= 0
   edgeBit = case dir of
     LeftD -> 0x80
@@ -385,6 +397,7 @@ incDecReg op getReg setReg regs =
  where
   f' =  testZeroFlag inced.res
     .|. testHalfCarryFlag8 1 targetReg inced.res
+    .|. (carryFlag .&. regs.f)
   inced = op targetReg
   targetReg = getReg regs
 
@@ -804,14 +817,26 @@ changeCarryFlag isSet regs = regs { f = f' }
 
 --DAA
 adjAForBCDAdd :: Regs -> Regs
-adjAForBCDAdd regs = regs { f = adjF regs.f, a = a' }
+adjAForBCDAdd regs = regs { f = f', a = 0xFF .&. a' }
  where
-  a' = adjHighNyb <<< adjLowNyb $ regs.a
-  adjLowNyb = if (regs.f .&. halfCarryFlag /= 0) || (regs.a .&. 15 > 9)
-    then (6 + _) else id
-  adjHighNyb = if shouldAdjHighNyb then (0x60 + _) else id
-  adjF = if shouldAdjHighNyb then (carryFlag .|. _) else (cmplCarryFlag .&. _)
-  shouldAdjHighNyb = (regs.f .&. halfCarryFlag /= 0) || (regs.a > 0x99)
+  f' = setFlagCond (0x100 .&. a' /= 0) carryFlag
+     $ setZeroFlag (0xFF .&. a')
+     $ subtractionFlag .&. regs.f 
+
+  a' = adj.highNyb <<< adj.lowNyb $ regs.a
+  adj = if regs.f .&. subtractionFlag /= 0
+    then
+      { lowNyb  : if (regs.f .&. halfCarryFlag /= 0)
+                    then  (0xFF .&. _) <<< (_ - 6) else id
+      , highNyb : if (regs.f .&. carryFlag /= 0)
+                    then (_ - 0x60) else id
+      }
+    else
+      { lowNyb  : if (regs.f .&. halfCarryFlag /= 0) || (0x0F .&. regs.a > 9)
+                    then (6 + _) else id
+      , highNyb : if (regs.f .&. carryFlag /= 0) || (regs.a > 0x9F)
+                    then (0x60 + _) else id
+      }
 
 --NOP
 nop :: Regs -> Regs
@@ -887,6 +912,10 @@ isSetFlag f fs = f .&. fs /= 0
 setFlag :: I8 -> I8 -> I8
 setFlag  f = (f .|. _)
 
+setFlagCond :: Boolean -> I8 -> I8 -> I8
+setFlagCond true  f = (f .|. _)
+setFlagCond false f = (complement f .&. _)
+
 unsetFlag :: I8 -> I8 -> I8
 unsetFlag f = ((complement f) .&. _)
 
@@ -903,6 +932,14 @@ setZeroFlag x = if x == 0
 
 testCarryFlag8 :: Int -> I8
 testCarryFlag8 x = if x > 255 then carryFlag else 0
+
+setCarryFlag8 :: Int -> I8 -> I8
+setCarryFlag8 x = if x > 255
+  then (_ .|. carryFlag)
+  else (_ .&. cmplCarryFlag)
+
+testCarryFlag16 :: Int -> I8
+testCarryFlag16 x = if x > 0xFFFF then carryFlag else 0
 
 setCarryFlag16 :: Int -> I8 -> I8
 setCarryFlag16 x = if x > 0xFFFF
@@ -924,6 +961,12 @@ setHalfCarryFlag8 reg1 reg2 sum =
 testHalfCarryFlag16 :: I16 -> I16 -> I16 -> I8
 testHalfCarryFlag16 reg1 reg2 sum = if res /= 0 then carryFlag else 0
  where res = 0x0100 .&. (reg1 .^. reg2 .^. sum)
+
+--NOTE: I'm not sure why this calculation is the way it is, or what it represents
+--but according to specifications, this is how it should be done.
+testWeirdHalfCarryFlag16 :: I16 -> I16 -> I16 -> I8
+testWeirdHalfCarryFlag16 reg1 reg2 sum = if res /= 0 then halfCarryFlag else 0
+ where res = 0x1000 .&. (reg1 .^. reg2 .^. sum)
 
 --NOTE: replace fromMaybe with an error report mechanism to trace bad cases
 getCpuOp :: Int -> Array (Z80State -> Z80State) -> Z80State -> Z80State
