@@ -215,3 +215,63 @@ updImeCnt (MainMem mm@{ imeEnableCnt,ime }) = MainMem $
     else mm
  where imeEnableCnt' = imeEnableCnt - 1
 
+--Debug functions
+
+ioArea :: Mem -> String
+ioArea = rd8RangeStr "IO FF00-FF7F" 0xFF00 0XFF7F
+
+rd8RangeStr :: String -> Int -> Int -> Mem -> String
+rd8RangeStr name from to { mainMem } = name ++ memStrRange 0 (to-from)
+  (map (flip rd8 mainMem) $ S.fromFoldable (from A... to))
+
+pcArea :: Mem -> String
+pcArea { mainMem, regs } = "pcArea: " ++
+  prt 0 ++ " " ++ prt 1 ++ " " ++ prt 2
+ where
+  prt d = toHexStr 2 $ rd8 (regs.pc + d) mainMem 
+
+spArea :: Mem -> String
+spArea mem@{ mainMem=(MainMem mm), regs } =
+  rd8RangeStr "spArea" regs.sp (regs.sp + 15) mem
+{--++--}
+  {--memStrRange (regs.sp-0xC000) (regs.sp-0xC000+31) mm.wram--}
+
+gpuRegsStr :: Mem -> String
+gpuRegsStr { mainMem = (MainMem { gpu })} = "gpu regs FF40-FF7F"
+  ++ show (map (toHexStr 2 <<< flip gpuRd8 gpu) $ 0xFF40 A... 0xFF47) ++ "\n"
+  ++ memStrRange 0 (S.length gpu.regs) gpu.regs
+
+tileMap0Str :: Mem -> String
+tileMap0Str { mainMem = (MainMem mm) } = "tile map 0" 
+  ++ memStrRange (0x9800-0x8000) (0x9BFF-0x8000) mm.gpu.vram
+
+memStrRange :: Int -> Int -> S.Seq I8 -> String
+memStrRange from to seq = 
+  memStrRange' S.null S.take S.drop from to seq
+
+{--mainMemStrRO :: MainMem -> String--}
+{--mainMemStrRO (MainMem m) = "rom:\n" ++ memStrRange' A.null A.take A.drop--}
+  {--(fromHexStr "2230") (fromHexStr "224F") m.rom--}
+
+memStrRange' :: forall f. (Foldable f, Show (f String)) =>
+       (forall a. f a -> Boolean) -> (forall a. Int -> f a -> f a)
+                                  -> (forall a. Int -> f a -> f a)
+       -> Int -> Int -> f I8 -> String
+memStrRange' nullF takeF dropF from to s =
+  ramStr nullF takeF dropF s'
+ where
+  s' = takeF (to-from+1) <<< dropF from $ s
+
+ramStr :: forall f. (Foldable f, Show (f String)) =>
+       (forall a. f a -> Boolean) -> (forall a. Int -> f a -> f a)
+                                  -> (forall a. Int -> f a -> f a)
+       -> f I8 -> String
+ramStr nullF takeF dropF s = T.snd $ helper (T.Tuple 0 "") hexd
+ where
+  hexd = s
+  helper tup remain | nullF remain = tup
+  helper (T.Tuple i acc) remain =
+    helper (T.Tuple (i+bytesPerRow) acc') $ dropF bytesPerRow remain
+   where
+    acc' = acc ++ "\n" ++ toHexStr 4 i ++ showPacked (takeF bytesPerRow remain)
+  bytesPerRow = 16
