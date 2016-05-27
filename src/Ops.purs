@@ -860,19 +860,25 @@ halt state =
 
 --DI
 --EI
+ --NOTE a hack, until I understand the intricacies of EI
 setInterrupts :: Boolean -> Mem -> Mem
-setInterrupts enable mem@{ mainMem, regs } =
-  mem { mainMem = setIme enable mainMem }
+setInterrupts enable mem@{ mainMem } =
+  mem { mainMem = mainMem' }
+ where mainMem' = if enable
+                    then imeCntDwn mainMem
+                    else setIme false mainMem
 
 --Extended Ops
 execExtOps :: Array (Z80State -> Z80State)
            -> Z80State -> Z80State
-execExtOps opsMap state@{ mem = mem@{mainMem,regs} } =
-  state' { mem = mem { regs = regs { pc = 65535 .&. (regs.pc + 2) } } }
+execExtOps opsMap state =
+  state' { mem = state'.mem {
+    regs = state'.mem.regs {
+      pc = 65535 .&. (state'.mem.regs.pc + 2) } } }
  where
   state' = extOp state
   extOp = getCpuOp opCode opsMap 
-  opCode = rd8 (regs.pc+1) mainMem
+  opCode = rd8 (state.mem.regs.pc+1) state.mem.mainMem
 
 -- Helpers
 -- =======
