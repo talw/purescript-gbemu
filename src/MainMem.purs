@@ -12,6 +12,7 @@ import Data.Tuple as T
 import Gpu
 import Types
 import Utils
+import Debug
 
 --NOTE: optimization:
 --Most of the memory is not writable, so consider
@@ -116,6 +117,7 @@ wr16 i16 addr mem =
 cleanMainMem :: MainMem
 cleanMainMem = initIOArea $ MainMem
   { biosMapped : false
+  , imeEnableCnt : 0
   , ime : true
   , intE : 0
   , intF : 0
@@ -187,6 +189,9 @@ getIntF (MainMem mm) = mm.intF
 getIme :: MainMem -> Boolean
 getIme (MainMem mm) = mm.ime
 
+getImeEnableCnt :: MainMem -> Int
+getImeEnableCnt (MainMem mm) = mm.imeEnableCnt
+
 setIntE :: I8 -> MainMem -> MainMem
 setIntE val (MainMem mm) = MainMem $ mm { intE = val }
 
@@ -195,4 +200,18 @@ setIntF val (MainMem mm) = MainMem $ mm { intF = val }
 
 setIme :: Boolean -> MainMem -> MainMem
 setIme val (MainMem mm) = MainMem $ mm { ime = val }
+
+--NOTE: imeEnableCnt should be 2 according to specs,
+--but according to simulations I've run it looks like it's 3
+imeCntDwn :: MainMem -> MainMem
+imeCntDwn (MainMem mm@{ imeEnableCnt }) = MainMem $ mm { imeEnableCnt = 3 }
+
+updImeCnt :: MainMem -> MainMem
+updImeCnt (MainMem mm@{ imeEnableCnt,ime }) = MainMem $
+  if imeEnableCnt > 0
+    then mm { imeEnableCnt = imeEnableCnt'
+            , ime = if imeEnableCnt' > 0 then ime else true
+            }
+    else mm
+ where imeEnableCnt' = imeEnableCnt - 1
 

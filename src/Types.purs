@@ -28,16 +28,17 @@ adjRegs f m = m { regs = f m.regs }
 -- NOTE: Change all read-only memory sections to be javascript arrays.
 -- Fill them at the beginning using an ST Array computation.
 newtype MainMem = MainMem
-  { biosMapped :: Boolean
-  , ime        :: Boolean -- Interrupts master enable flag
-  , intE       :: I8 -- Interrupt enable flags
-  , intF       :: I8 -- Interrupt flags
-  , bios       :: Array I8
-  , gpu        :: Gpu -- NOTE: might want to reconsider this
-  , rom        :: Array I8
-  , eram       :: Seq I8
-  , wram       :: Seq I8
-  , zram       :: Seq I8
+  { biosMapped   :: Boolean
+  , imeEnableCnt :: Int
+  , ime          :: Boolean -- Interrupts master enable flag
+  , intE         :: I8 -- Interrupt enable flags
+  , intF         :: I8 -- Interrupt flags
+  , bios         :: Array I8
+  , gpu          :: Gpu -- NOTE: might want to reconsider this
+  , rom          :: Array I8
+  , eram         :: Seq I8
+  , wram         :: Seq I8
+  , zram         :: Seq I8
   }
 
 type Gpu = 

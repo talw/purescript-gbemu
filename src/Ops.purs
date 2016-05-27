@@ -770,12 +770,13 @@ ret { mainMem, regs } =
  where pc' = rd16 regs.sp mainMem
   
 --RST XX
-callRoutine :: I16 -> Mem -> Mem
-callRoutine addr { mainMem, regs, svdRegs } =
+callRoutine :: Boolean -> I16 -> Mem -> Mem
+callRoutine fromIntrr addr { mainMem, regs, svdRegs } =
   { mainMem : mainMem', regs : regs', svdRegs : saveRegs regs svdRegs }
  where
   regs' = regs { sp = regs.sp - 2, pc = addr }
-  mainMem' = wr16 (regs.pc+1) (regs.sp - 2) mainMem
+  mainMem' = wr16 retAddr (regs.sp - 2) mainMem
+  retAddr = if fromIntrr then regs.pc else regs.pc + 1
 
 -- Misc.
 -- =====

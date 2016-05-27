@@ -344,7 +344,7 @@ basicOps =
   , mm2op $ callImmFlag true zeroFlag       -- CALL NZ,nn
   , mm2op $ pushReg b c                     -- PUSH BC
   , mr2op $ addImmToA                       -- ADD A,n
-  , mm2op $ callRoutine 0x00                -- RST 0
+  , mm2op $ callRoutine false 0x00          -- RST 0
 
   , mr2op $ retFlag false zeroFlag          -- RET Z
   , mr2op $ ret                             -- RET
@@ -354,7 +354,7 @@ basicOps =
   , mm2op $ callImmFlag false zeroFlag      -- CALL Z,nn
   , mm2op $ callImm                         -- CALL nn
   , mr2op $ addImmCarryToA                  -- ADC A,n
-  , mm2op $ callRoutine 0x08                -- RST 8
+  , mm2op $ callRoutine false 0x08          -- RST 8
 
                                             -- Dx
   , mr2op $ retFlag true carryFlag          -- RET NC
@@ -365,7 +365,7 @@ basicOps =
   , mm2op $ callImmFlag true carryFlag      -- CALL NC,nn
   , mm2op $ pushReg d e                     -- PUSH DE
   , mr2op $ subImmFromA                     -- SUB A,n
-  , mm2op $ callRoutine 0x10                -- RST 10
+  , mm2op $ callRoutine false 0x10          -- RST 10
 
   , mr2op $ retFlag false carryFlag         -- RET C
   , mm2op $ retEnableInterrupt              -- RETI
@@ -375,7 +375,7 @@ basicOps =
   , mm2op $ callImmFlag true carryFlag      -- CALL C,nn
   , invalidOpCode
   , mr2op subImmCarryToA                    -- SBC A,n
-  , mm2op $ callRoutine 0x18                -- RST 18
+  , mm2op $ callRoutine false 0x18          -- RST 18
 
                                             -- Ex
   , mm2op $ ldFF00ImmMemFromReg a           -- LDH (n),A
@@ -386,7 +386,7 @@ basicOps =
   , invalidOpCode
   , mm2op $ pushReg h l                     -- PUSH HL
   , mr2op andOpImmIntoA                     -- AND n
-  , mm2op $ callRoutine 0x20                -- RST 20
+  , mm2op $ callRoutine false 0x20          -- RST 20
 
   , mr2op addImmToSP                        -- ADD SP,d
   , rr2op jumpHL                            -- JP (HL)
@@ -396,7 +396,7 @@ basicOps =
   , invalidOpCode
   , invalidOpCode
   , mr2op xorOpImmIntoA                     -- XOR n
-  , mm2op $ callRoutine 0x28                -- RST 28
+  , mm2op $ callRoutine false 0x28          -- RST 28
 
                                             -- Fx
   , mr2op $ ldRegFromFF00ImmMem setA        -- LDH A,(n)
@@ -407,7 +407,7 @@ basicOps =
   , invalidOpCode
   , mm2op $ pushReg a f                     -- PUSH AF
   , mr2op orOpImmIntoA                      -- OR n
-  , mm2op $ callRoutine 0x30                -- RST 30
+  , mm2op $ callRoutine false 0x30          -- RST 30
 
   , mr2op ldHLFromSPImm                     -- LDHL SP,d
   , rr2op ldSPFromHL                        -- LD SP,HL
@@ -417,7 +417,7 @@ basicOps =
   , invalidOpCode
   , invalidOpCode
   , mr2op compAToImm                        -- CP n
-  , mm2op $ callRoutine 0x38                -- RST 38
+  , mm2op $ callRoutine false 0x38          -- RST 38
 ]
 
 extOps :: Array (Z80State -> Z80State)

@@ -42,21 +42,26 @@ run interval state = tailRecM go { intr : interval, st : state }
 --NOTE Reg r should be increased by 1?
 step :: forall e. Z80State -> Eff (canvas :: Canvas | e) Z80State
 step state@{ mem = oldMem@{regs = oldRegs} } =
-  handleGpu <<< incTime oldRegs.pc <<< incPc oldRegs.pc <<< op $
-    traceState $ state
+      handleGpu oldRegs.pc
+  <<< updImeCntInMem
+  <<< incTime
+  <<< incPc oldRegs.pc
+  <<< op
+   $  traceState $ state
  where
-
-  op st = if shldHndlIntrr st
+  op st = if checkShldHndlIntrr st
     then interruptOp st
     else regularOp st
   regularOp st = getCpuOp (getCurrOpCode st) basicOps $ st
   getCurrOpCode st = rd8 st.mem.regs.pc st.mem.mainMem
+  incTime st@{totalM} = st
+    { totalM = st.totalM + opTiming st }
+  opTiming st = getCurrOpTiming oldRegs.pc st 
+  updImeCntInMem st = st { mem = st.mem { mainMem = updImeCnt st.mem.mainMem } }
 
-incTime :: I8 -> Z80State -> Z80State
-incTime oldPc st@{totalM} = st
-  { totalM = st.totalM + opTiming }
+getCurrOpTiming :: I16 -> Z80State -> Int
+getCurrOpTiming oldPc st = getOpTiming addr opTimingTable
  where
-  opTiming = getOpTiming addr opTimingTable
   addr = if opCode == 0xCB
     then rd8 (oldPc+1) st.mem.mainMem
     else opCode
@@ -84,9 +89,9 @@ incPc oldPc st =
       }
 
 
-handleGpu :: forall e. Z80State -> Eff (canvas :: Canvas | e) Z80State
-handleGpu st = do
-  gpu' <- gpuStep st.mem.regs.m (getGpu st.mem.mainMem)
+handleGpu :: forall e. I16 -> Z80State -> Eff (canvas :: Canvas | e) Z80State
+handleGpu oldPc st = do
+  gpu' <- gpuStep (getCurrOpTiming oldPc st) (getGpu st.mem.mainMem)
   let intF' = (if gpu'.vblIntrr then (0x01 .|. _) else id) $ getIntF st.mem.mainMem
   return $ st { mem = st.mem { mainMem =
         setIntF intF'
@@ -101,18 +106,18 @@ interruptOp st = snd res $
   res :: Tuple (Int -> Int) (Z80State -> Z80State)
   res = fromMaybe (Tuple id id) mRes
   mRes = getOnBit (interruptBits st) >>= \x -> case x of
-           1  -> Just $ Tuple (0xFE .&. _) (mm2op $ callRoutine 0x40)
-           2  -> Just $ Tuple (0xFD .&. _) (mm2op $ callRoutine 0x48)
-           4  -> Just $ Tuple (0xFB .&. _) (mm2op $ callRoutine 0x50)
-           8  -> Just $ Tuple (0xF7 .&. _) (mm2op $ callRoutine 0x58)
-           16 -> Just $ Tuple (0xEF .&. _) (mm2op $ callRoutine 0x60)
+           1  -> Just $ Tuple (0xFE .&. _) (mm2op $ callRoutine true 0x40 )
+           2  -> Just $ Tuple (0xFD .&. _) (mm2op $ callRoutine true 0x48 )
+           4  -> Just $ Tuple (0xFB .&. _) (mm2op $ callRoutine true 0x50 )
+           8  -> Just $ Tuple (0xF7 .&. _) (mm2op $ callRoutine true 0x58 )
+           16 -> Just $ Tuple (0xEF .&. _) (mm2op $ callRoutine true 0x60 )
            otherwise -> Nothing -- NOTE log this
 
 interruptBits :: Z80State -> I8
 interruptBits st = getIntE st.mem.mainMem .&. getIntF st.mem.mainMem
 
-shldHndlIntrr :: Z80State -> Boolean
-shldHndlIntrr st = getIme st.mem.mainMem && interruptBits st /= 0
+checkShldHndlIntrr :: Z80State -> Boolean
+checkShldHndlIntrr st = getIme st.mem.mainMem && interruptBits st /= 0 
 
 
 cleanState :: Z80State
@@ -134,7 +139,6 @@ cleanRegs :: Regs
 cleanRegs =
   { pc    : 0x0101
   , sp    : 0xFFFE
-  , m     : 0
   , a     : 0x01
   , b     : 0
   , c     : 0x13
