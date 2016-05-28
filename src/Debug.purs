@@ -5,6 +5,8 @@ module Debug
   , trs
   , ctrs
   , condTr
+  , ramStr
+  , memStrRange
   ) where
 
 import Prelude
@@ -15,7 +17,9 @@ import Data.Int.Bits
 import Data.Array as A
 import Data.Tuple as T
 import Debug.Trace
+import Data.Foldable
 
+import Types
 import Utils
 
 trs :: forall a. Show a => String -> a -> a
@@ -37,3 +41,34 @@ ctrh b n a = if b
 condTr :: forall a b. Boolean -> (Unit -> String) -> a -> a
 condTr false _ a = a
 condTr true strF a = trace (strF unit) \_ -> a
+
+memStrRange :: Int -> Int -> S.Seq I8 -> String
+memStrRange from to seq = 
+  memStrRange' S.null S.take S.drop from to seq
+
+{--mainMemStrRO :: MainMem -> String--}
+{--mainMemStrRO (MainMem m) = "rom:\n" ++ memStrRange' A.null A.take A.drop--}
+  {--(fromHexStr "2230") (fromHexStr "224F") m.rom--}
+
+memStrRange' :: forall f. (Foldable f, Show (f String)) =>
+       (forall a. f a -> Boolean) -> (forall a. Int -> f a -> f a)
+                                  -> (forall a. Int -> f a -> f a)
+       -> Int -> Int -> f I8 -> String
+memStrRange' nullF takeF dropF from to s =
+  ramStr nullF takeF dropF s'
+ where
+  s' = takeF (to-from+1) <<< dropF from $ s
+
+ramStr :: forall f. (Foldable f, Show (f String)) =>
+       (forall a. f a -> Boolean) -> (forall a. Int -> f a -> f a)
+                                  -> (forall a. Int -> f a -> f a)
+       -> f I8 -> String
+ramStr nullF takeF dropF s = T.snd $ helper (T.Tuple 0 "") hexd
+ where
+  hexd = s
+  helper tup remain | nullF remain = tup
+  helper (T.Tuple i acc) remain =
+    helper (T.Tuple (i+bytesPerRow) acc') $ dropF bytesPerRow remain
+   where
+    acc' = acc ++ "\n" ++ toHexStr 4 i ++ showPacked (takeF bytesPerRow remain)
+  bytesPerRow = 16

@@ -4,10 +4,10 @@ import Prelude
 import Math
 import Data.Sequence as S
 import Data.Maybe
-import Data.Foldable
 import Data.Int.Bits
 import Data.Array as A
 import Data.Tuple as T
+import Data.Foldable
 
 import Gpu
 import Types
@@ -241,37 +241,10 @@ gpuRegsStr { mainMem = (MainMem { gpu })} = "gpu regs FF40-FF7F"
   ++ show (map (toHexStr 2 <<< flip gpuRd8 gpu) $ 0xFF40 A... 0xFF47) ++ "\n"
   ++ memStrRange 0 (S.length gpu.regs) gpu.regs
 
+tileSet0Str :: Mem -> String
+tileSet0Str { mainMem = (MainMem mm) } = "tile set 0" 
+  ++ memStrRange (0x8000-0x8000) (0x97FF-0x8000) mm.gpu.vram
+
 tileMap0Str :: Mem -> String
 tileMap0Str { mainMem = (MainMem mm) } = "tile map 0" 
   ++ memStrRange (0x9800-0x8000) (0x9BFF-0x8000) mm.gpu.vram
-
-memStrRange :: Int -> Int -> S.Seq I8 -> String
-memStrRange from to seq = 
-  memStrRange' S.null S.take S.drop from to seq
-
-{--mainMemStrRO :: MainMem -> String--}
-{--mainMemStrRO (MainMem m) = "rom:\n" ++ memStrRange' A.null A.take A.drop--}
-  {--(fromHexStr "2230") (fromHexStr "224F") m.rom--}
-
-memStrRange' :: forall f. (Foldable f, Show (f String)) =>
-       (forall a. f a -> Boolean) -> (forall a. Int -> f a -> f a)
-                                  -> (forall a. Int -> f a -> f a)
-       -> Int -> Int -> f I8 -> String
-memStrRange' nullF takeF dropF from to s =
-  ramStr nullF takeF dropF s'
- where
-  s' = takeF (to-from+1) <<< dropF from $ s
-
-ramStr :: forall f. (Foldable f, Show (f String)) =>
-       (forall a. f a -> Boolean) -> (forall a. Int -> f a -> f a)
-                                  -> (forall a. Int -> f a -> f a)
-       -> f I8 -> String
-ramStr nullF takeF dropF s = T.snd $ helper (T.Tuple 0 "") hexd
- where
-  hexd = s
-  helper tup remain | nullF remain = tup
-  helper (T.Tuple i acc) remain =
-    helper (T.Tuple (i+bytesPerRow) acc') $ dropF bytesPerRow remain
-   where
-    acc' = acc ++ "\n" ++ toHexStr 4 i ++ showPacked (takeF bytesPerRow remain)
-  bytesPerRow = 16
