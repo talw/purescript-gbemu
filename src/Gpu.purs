@@ -26,8 +26,18 @@ import Types
 import Utils
 import Debug
 
-foreign import setScreen :: forall e. Array I8 -> Context2D
-                       -> Eff (canvas :: Canvas | e) Unit
+--NOTE move these to debug helpers and change to Eff Timer
+foreign import startTimer :: forall e. Eff (canvas :: Canvas | e) Unit
+foreign import endTimer :: forall e. Eff (canvas :: Canvas | e) Int
+
+foreign import setCanvasPixelColor :: forall e. Int -> Int -> Int
+                              -> Eff (canvas :: Canvas | e) Unit
+
+{--foreign import setScreen :: forall e. Context2D--}
+                         {---> Eff (canvas :: Canvas | e) Unit--}
+
+foreign import setScreenArr :: forall e. Array I8 -> Context2D
+                         -> Eff (canvas :: Canvas | e) Unit
 
 modeDuration :: GpuMode -> Int
 modeDuration = case _ of
@@ -45,10 +55,10 @@ getCanvas = do
   Just canvasElem <- getCanvasElementById "screen"
   getContext2D canvasElem
 
+--NOTE: could be redundant after scrBuf is gone
 resetScreen :: forall e. Eff (canvas :: Canvas | e) Unit
-resetScreen = setScreen arr =<< getCanvas
- where
-  arr = A.replicate (160*144*4) 255
+resetScreen = setScreenArr arr =<< getCanvas
+ where arr = A.replicate (160*144*4) 255
 
 cleanGpu :: Gpu
 cleanGpu =
@@ -91,7 +101,10 @@ gpuStep mReg gpu@{mTimer,mode,currLine,currPos,scrBuf,vblFinish} =
       HBlank -> 
         let doOnLastLine gp = if currLine /= pixHeight - 1 then return gp
               else do
-                setScreen (seqToArray scrBuf) =<< getCanvas
+                traceA "draw!"
+                {--setScreen =<< getCanvas--}
+                setScreenArr (seqToArray scrBuf) =<< getCanvas
+
                 return $ gp { scrBuf = S.empty :: S.Seq I8 --psc forces me
                             , mode = VBlank
                             , vblIntrr = true
@@ -127,13 +140,18 @@ hblCurrLineEarlyReset gpu@{mTimer = mTimer', currLine, mode} =
 --Change condition of renderOrNot once object rendering is added
 --And perhaps rename the current renderLine to renderBG and have renderLine
 --be what calls renderBG and renderFG
+{--renderLine :: Gpu -> forall e. Eff (canvas :: Canvas | e) Gpu--}
 renderLine :: Gpu -> Gpu
-renderLine gpu = gpu { scrBuf = foldRes.scrBuf }
+renderLine gpu =
+  {--do foldRes <- eFoldRes--}
+  {--return gpu--}
+  gpu {scrBuf = foldRes.scrBuf}
  where
+  {--eFoldRes = A.foldM updateCanvas--}
   foldRes = foldl updateCanvas
-                  { scrBuf:gpu.scrBuf, tho:tileHorizOff
-                  , mho:memHorizOff, tix:tileIx }
-                  (0 A... (pixWidth-1))
+                     { tho:tileHorizOff, scrBuf:gpu.scrBuf
+                     , mho:memHorizOff, tix:tileIx }
+                     (0 A... (pixWidth-1))
   tileIx = getTileIx gpu tileIxAddr
   tileIxAddr = bgMapOff + memVertOff + memHorizOff
   --map #0 9800-9BFF, map #1 9C00-9FFF
@@ -150,8 +168,13 @@ renderLine gpu = gpu { scrBuf = foldRes.scrBuf }
   --tile width is 8 pixels / 3 bits wide
   tileHorizOff = 7 .&. gpu.xScroll
 
-  updateCanvas {scrBuf,tho,mho,tix} i =
-    {scrBuf:scrBuf',tho:tho',mho:mho',tix:tix'}
+  updateCanvas {tho,mho,tix,scrBuf} i = do
+    {--setCanvasPixelColor color.a (i*4)   gpu.currLine--}
+    {--setCanvasPixelColor color.r (i*4+1) gpu.currLine--}
+    {--setCanvasPixelColor color.g (i*4+2) gpu.currLine--}
+    {--setCanvasPixelColor color.b (i*4+3) gpu.currLine--}
+    {--return {tho:tho',mho:mho',tix:tix'}--}
+    {scrBuf:scrBuf', tho:tho',mho:mho',tix:tix'}
    where
     --Would've rewritten with a single 'if', if PureScript had supported
     --pattern matching in where clause
@@ -171,7 +194,7 @@ renderLine gpu = gpu { scrBuf = foldRes.scrBuf }
 
     --NOTE trace error, if invalid color ix
     color = getFromSeq cleanColor colorIx gpu.palette
-    colorIx = getTilePixel tho tileVertOff $ getTile tileIx gpu.tiles 
+    colorIx = getTilePixel tho tileVertOff $ getTile tix gpu.tiles 
 
 --NOTE: Is it necessary to check tix < 128? doesn't map tile #1 always
 --use set #1? (which is from -128 to 127)
@@ -218,7 +241,7 @@ getCtrlFlags gpu =  cf gpu.bgOn   0x01
  where cf bool flag = if bool then flag else 0x00
 
 setCtrlFlags :: I8 -> Gpu -> Gpu
-setCtrlFlags ctrlFlags gpu = enableDisableOrNot gpu.dispOn dispOn' $
+setCtrlFlags ctrlFlags gpu = enableDisableOrNot gpu.dispOn dispOn'
   gpu
     { bgOn   = isFlagSet 0x01
     , bgMap1 = isFlagSet 0x08
