@@ -26,9 +26,6 @@ import Types
 import Utils
 import Debug
 
---NOTE move these to debug helpers and change to Eff Timer
-foreign import startTimer :: forall e. Eff (canvas :: Canvas | e) Unit
-foreign import endTimer :: forall e. Eff (canvas :: Canvas | e) Int
 
 foreign import setCanvasPixelColor :: forall e. Int -> Int -> Int
                               -> Eff (canvas :: Canvas | e) Unit

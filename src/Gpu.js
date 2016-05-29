@@ -2,18 +2,6 @@
 
 // module Gpu
 
-var startTime;
-
-exports.startTimer=function() {
-  startTime = new Date().getTime();
-}
-
-exports.endTimer=function() {
-  var endTime = new Date().getTime();
-  var time = endTime - startTime;
-  return time;
-}
-
 //var ctx = document.getElementById("screen").getContext('2d');
 //var imgData = ctx.createImageData(160,144);
 //var imgDataArr = imgData.data;

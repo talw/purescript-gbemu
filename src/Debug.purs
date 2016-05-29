@@ -7,12 +7,16 @@ module Debug
   , condTr
   , ramStr
   , memStrRange
+  , timeIt
+  , Timer
   ) where
 
 import Prelude
 import Math as M
 import Data.Sequence as S
 import Data.Maybe
+import Control.Bind
+import Control.Monad.Eff
 import Data.Int.Bits
 import Data.Array as A
 import Data.Tuple as T
@@ -22,10 +26,29 @@ import Data.Foldable
 import Types
 import Utils
 
+-- Timer
+-- =====
+
+foreign import data Timer :: !
+
+foreign import startTimer :: forall e. Eff (timer :: Timer | e) Unit
+foreign import endTimer :: forall e. Eff (timer :: Timer | e) Int
+foreign import recordTime :: forall e. Int -> Int -> Int -> Eff (timer :: Timer | e) Unit
+
+timeIt :: forall e a. Int -> (Unit -> Eff (timer :: Timer | e) a) -> Eff (timer :: Timer | e) a
+timeIt timerIx f = do
+  startTimer
+  res <- f unit
+  recordTime timerIx 50000 =<< endTimer
+  return res
+
+-- Trace functions
+-- ===============
+
 trs :: forall a. Show a => String -> a -> a
 trs n a = trace (n++": "++show a) \_ -> a
 
-ctrs :: forall a b. Show a => Boolean -> String -> a -> a
+ctrs :: forall a. Show a => Boolean -> String -> a -> a
 ctrs b n a = if b
   then trace (n++": "++show a) \_ -> a
   else a
@@ -38,17 +61,16 @@ ctrh b n a = if b
   then trace (n++": "++toHexStr 2 a) \_ -> a
   else a
 
-condTr :: forall a b. Boolean -> (Unit -> String) -> a -> a
+condTr :: forall a. Boolean -> (Unit -> String) -> a -> a
 condTr false _ a = a
 condTr true strF a = trace (strF unit) \_ -> a
+
+-- Showing data structures
+-- =======================
 
 memStrRange :: Int -> Int -> S.Seq I8 -> String
 memStrRange from to seq = 
   memStrRange' S.null S.take S.drop from to seq
-
-{--mainMemStrRO :: MainMem -> String--}
-{--mainMemStrRO (MainMem m) = "rom:\n" ++ memStrRange' A.null A.take A.drop--}
-  {--(fromHexStr "2230") (fromHexStr "224F") m.rom--}
 
 memStrRange' :: forall f. (Foldable f, Show (f String)) =>
        (forall a. f a -> Boolean) -> (forall a. Int -> f a -> f a)
