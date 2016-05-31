@@ -30,7 +30,7 @@ main = launchAff $ do
   initialState <- liftEff $ reset rom
   afLog "reset finished"
 
-  liftEff $ drive 234000 initialState
+  liftEff $ drive 634000 initialState
   
   afLog "stopped."
  where

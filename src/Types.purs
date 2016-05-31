@@ -56,7 +56,7 @@ type Gpu =
   , yScroll   :: Int
   , xScroll   :: Int
   , vblIntrr  :: Boolean
-  , palette   :: Seq Color
+  , palette   :: Palette
   , mode      :: GpuMode
   , tiles     :: Tiles
   , regs      :: MemSection
@@ -72,8 +72,13 @@ type Color =
   }
 
 newtype Tiles = Tiles MemSection
-{--newtype Tile = Tile (Seq Int)--}
 
+newtype Palette = Palette MemSection
+
+data Channel = Alpha
+             | Red
+             | Green
+             | Blue
 
 data GpuMode = HBlank
              | VBlank

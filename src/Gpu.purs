@@ -17,6 +17,7 @@ import Control.Monad.Eff.Console
 import Data.Int
 import Data.Int.Bits
 import Data.Foldable
+import Data.Functor
 import Data.Array as A
 import Data.Sequence as S
 import Data.Maybe
@@ -54,7 +55,7 @@ resetScreen :: forall e. Eff (canvas :: Canvas | e) Unit
 resetScreen = return unit -- setScreenArr arr =<< getCanvas
  {--where arr = A.replicate (160*144*4) 255--}
 
-cleanGpu :: forall e. Gpu
+cleanGpu :: Gpu
 cleanGpu =
   { mTimer : modeDuration VBlank - 16
   , dispOn : true
@@ -67,7 +68,7 @@ cleanGpu =
   , yScroll : 0
   , xScroll : 0
   , vblIntrr : false
-  , palette : S.fromFoldable $ A.replicate 4 cleanColor
+  , palette : Palette $ M.getNew 16 0
   , mode : VBlank
   , tiles : Tiles $ M.getNew (384*64) 0
   , regs : M.getNew 0x40 0
@@ -170,8 +171,9 @@ renderLine gpu = do
 
     --NOTE trace error, if invalid color ix
     colorIx <- getTilePixel tho tileVertOff tix gpu.tiles 
-    let color = getFromSeq cleanColor colorIx gpu.palette
+    {--let color = getFromSeq cleanColor colorIx gpu.palette--}
 
+    color <- getColor colorIx gpu.palette
     setCanvasPixelColor color.a (i*4)   gpu.currLine
     setCanvasPixelColor color.r (i*4+1) gpu.currLine
     setCanvasPixelColor color.g (i*4+2) gpu.currLine
@@ -179,6 +181,7 @@ renderLine gpu = do
     return $ {tho:tho',mho:mho',tix:tix'}
    where
     lastTileRowPixel = tho == 7
+
 
 
 getTileIx :: forall e. Gpu -> I16 -> Eff (ma :: MemAccess | e) I8
@@ -198,24 +201,42 @@ gpuRd8 addr gpu = case addr of
 gpuWr8 :: forall e. I8 -> I16 -> Gpu -> Eff (ma :: MemAccess | e) Gpu
 gpuWr8 i8 addr gpu = do
   setRegs
-  return case addr of
-    0xFF40 -> setCtrlFlags i8 gpu
-    0xFF42 -> gpu { yScroll = i8 }
-    0xFF43 -> gpu { xScroll = i8 }
-    0xFF44 -> gpu { currLine = i8 }
+  case addr of
+    0xFF40 -> return $ setCtrlFlags i8 gpu
+    0xFF42 -> return gpu { yScroll = i8 }
+    0xFF43 -> return gpu { xScroll = i8 }
+    0xFF44 -> return gpu { currLine = i8 }
     0xFF47 -> setPalette  
-    otherwise -> gpu
+    otherwise -> return gpu
  where
   setRegs = M.replace i8 (addr - 0xFF40) gpu.regs 
-  setPalette = gpu { palette = foldl stPl S.empty (0 A... 3) }
+  setPalette = gpu <$ traverse_ stPl (0 A... 3)
   --Every color is 2 bits wide
   --NOTE should this be reversed?
-  stPl plt i = case (i8 `zshr` (i*2)) .&. 3 of
-    0 -> S.snoc plt {a:255,r:255,g:255,b:255}
-    1 -> S.snoc plt {a:192,r:192,g:192,b:255}
-    2 -> S.snoc plt {a:96 ,r:96 ,g:96 ,b:255}
-    3 -> S.snoc plt {a:0  ,r:0  ,g:0  ,b:255}
-    otherwise -> plt -- NOTE log this
+  stPl i = case (i8 `zshr` (i*2)) .&. 3 of
+    0 -> setColor {a:255,r:255,g:255,b:255} i gpu.palette
+    1 -> setColor {a:192,r:192,g:192,b:255} i gpu.palette
+    2 -> setColor {a:96 ,r:96 ,g:96 ,b:255} i gpu.palette
+    3 -> setColor {a:0  ,r:0  ,g:0  ,b:255} i gpu.palette
+    otherwise -> return unit -- NOTE log this
+
+getColor :: forall e. Int -> Palette
+         -> Eff (ma :: MemAccess | e) {a :: Int, r :: Int, g :: Int, b :: Int}
+getColor cIx (Palette pal) = do
+  a <- pal M.!! (cIx*4 + 0)
+  r <- pal M.!! (cIx*4 + 1)
+  g <- pal M.!! (cIx*4 + 2)
+  b <- pal M.!! (cIx*4 + 3)
+  return {a,r,g,b}
+
+setColor :: forall e. {a :: Int, r :: Int, g :: Int, b :: Int} -> Int -> Palette
+         -> Eff (ma :: MemAccess | e) Unit
+setColor {a,r,g,b} cIx (Palette pal) = do
+  M.replace a (cIx*4 + 0) pal
+  M.replace r (cIx*4 + 1) pal
+  M.replace g (cIx*4 + 2) pal
+  M.replace b (cIx*4 + 3) pal
+  return unit
 
 getCtrlFlags :: Gpu -> I8
 getCtrlFlags gpu =  cf gpu.bgOn   0x01
