@@ -50,7 +50,6 @@ type Gpu =
   , bgOn      :: Boolean
   , bgMap1    :: Boolean
   , bgSet1    :: Boolean
-  , scrBuf    :: Seq I8
   , vblFinish :: Boolean
   , currLine  :: Int
   , currPos   :: Int
@@ -72,8 +71,8 @@ type Color =
   , b :: I8
   }
 
-type Tiles = Seq Tile
-newtype Tile = Tile (Seq Int)
+newtype Tiles = Tiles MemSection
+{--newtype Tile = Tile (Seq Int)--}
 
 
 data GpuMode = HBlank

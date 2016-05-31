@@ -39,7 +39,7 @@ timeIt :: forall e a. Int -> (Unit -> Eff (timer :: Timer | e) a) -> Eff (timer 
 timeIt timerIx f = do
   startTimer
   res <- f unit
-  recordTime timerIx 5000 =<< endTimer
+  recordTime timerIx 1 =<< endTimer
   return res
 
 -- Trace functions

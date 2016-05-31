@@ -104,7 +104,8 @@ handleGpu :: forall e. Int -> Z80State
           -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 handleGpu opTiming st = do
   gpu' <- gpuStep opTiming (getGpu st.mem.mainMem)
-  let intF' = (if gpu'.vblIntrr then (trace ("vbl-totalM: " ++ show st.totalM) \_ -> (0x01 .|. _))
+  let intF' = (if gpu'.vblIntrr then --(0x01 .|. _)
+                                (trace ("vbl-totalM: " ++ show st.totalM) \_ -> (0x01 .|. _))
                                 else id)
                 $ getIntF st.mem.mainMem
   return $ st { mem = st.mem { mainMem =

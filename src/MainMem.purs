@@ -86,9 +86,7 @@ wr8 i8 addr (MainMem mem@{biosMapped,bios,rom,eram,wram,zram,gpu=gpu@{oam}}) =
     case 0xF000.&.addr of
       n | 0 <= n && n <= 7 -> return mem -- NOTE error can't write to bios or rom
       --{ vram = M.replace i8 (0x1FFF .&. addr) vram }
-      n | n == 0x8000 || n == 0x9000 -> do 
-        gpu' <- wrVRam i8 addr gpu 
-        return mem { gpu = gpu' }
+      n | n == 0x8000 || n == 0x9000 -> mem <$ wrVRam i8 addr gpu 
       0xA000 -> mem <$ M.replace i8 (0x1FFF .&. addr) eram
       0xB000 -> mem <$ M.replace i8 (0x1FFF .&. addr) eram
       0xC000 -> mem <$ M.replace i8 (0x1FFF .&. addr) wram
