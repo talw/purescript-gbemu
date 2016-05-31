@@ -29,17 +29,20 @@ adjRegs f m = m { regs = f m.regs }
 -- Fill them at the beginning using an ST Array computation.
 newtype MainMem = MainMem
   { biosMapped   :: Boolean
+  , bios         :: Array I8
   , imeEnableCnt :: Int
   , ime          :: Boolean -- Interrupts master enable flag
   , intE         :: I8 -- Interrupt enable flags
   , intF         :: I8 -- Interrupt flags
-  , bios         :: Array I8
   , gpu          :: Gpu -- NOTE: might want to reconsider this
-  , rom          :: Array I8
-  , eram         :: Seq I8
-  , wram         :: Seq I8
-  , zram         :: Seq I8
+  , rom          :: MemSection
+  , eram         :: MemSection
+  , wram         :: MemSection
+  , zram         :: MemSection
   }
+
+foreign import data MemAccess :: !
+foreign import data MemSection :: *
 
 type Gpu = 
   { mTimer    :: Int
@@ -57,9 +60,9 @@ type Gpu =
   , palette   :: Seq Color
   , mode      :: GpuMode
   , tiles     :: Tiles
-  , regs      :: Seq I8
-  , vram      :: Seq I8
-  , oam       :: Seq I8
+  , regs      :: MemSection
+  , vram      :: MemSection
+  , oam       :: MemSection
   }
 
 type Color =

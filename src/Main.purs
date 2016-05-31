@@ -37,7 +37,7 @@ main = launchAff $ do
   frameDur = 17556
 
 drive :: forall e. Int -> Z80State
-      -> Eff (canvas :: Canvas, timer :: Timer | e) Z80State
+      -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: Timer | e) Z80State
 drive interval state = do
   {--isPause <- readFromEnvSomething--}
   state' <- run interval state

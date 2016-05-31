@@ -8,6 +8,7 @@ import Data.Either
 import Data.Foldable
 import Control.Monad.Eff
 import Control.Monad
+import Control.Bind
 
 import Types
 import MainMem
@@ -19,62 +20,68 @@ import Control.Monad.Rec.Class
 
 import Debug
 
-reset :: forall e. Array I8 -> Eff (canvas :: Canvas | e) Z80State
+reset :: forall e. Array I8 -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 reset rom = do
   resetScreen
-  return 
-    cleanState {
-      mem = cleanMem {
-        mainMem = setRom rom cleanMainMem
+  cs <- cleanState
+  return
+    cs {
+      mem = cs.mem {
+        mainMem = setRom rom cs.mem.mainMem
       }
     }
 
 
-run :: forall e. Int -> Z80State -> Eff (canvas :: Canvas, timer :: Timer | e) Z80State
+run :: forall e. Int -> Z80State -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: Timer | e) Z80State
 run interval state = tailRecM go { intr : interval, st : state }
  where
   go { st = st@{stop = true} } = return $ Right state
   go { intr, st } | intr <= 0 = return $ Right state
   go { intr, st } = do
     if (shldTrc st) then traceA "-------step-------" else return unit
-    {--st' <- step st--}
-    st' <- stepTime st
+    st' <- step st
+    {--st' <- stepTime st--}
     let elapsed = st'.totalM - st.totalM
     return $ Left { intr : (intr - elapsed), st : st' }
 
-step :: forall e. Z80State -> Eff (canvas :: Canvas | e) Z80State
-step state@{ mem = oldMem@{regs = oldRegs} } =
-      handleGpu oldRegs.pc
-  <<< updImeCntInMem
-  <<< incTime
-  <<< incPc oldRegs.pc
-  <<< op
-  {--<<< traceState--}
-   $  state
+step :: forall e. Z80State -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
+step state@{ mem = oldMem@{regs = oldRegs} } = do
+  opt <- opTiming
+  handleGpu opt
+    <=< (return <<< updImeCntInMem)
+    <=< incTime
+    <=< (return <<< incPc oldRegs.pc)
+    <=< op
+    {--<<< traceState--}
+     $  state
  where
   op st = if checkShldHndlIntrr st
     then interruptOp st
     else regularOp st
-  regularOp st = getCpuOp (getCurrOpCode st) basicOps $ st
+  regularOp st = do
+    coc <- getCurrOpCode st
+    getCpuOp coc basicOps st
   getCurrOpCode st = rd8 st.mem.regs.pc st.mem.mainMem
-  incTime st@{totalM} = st
-    { totalM = st.totalM + opTiming st }
-  opTiming st = getCurrOpTiming oldRegs.pc st 
+  incTime st@{totalM} = do
+    opt <- opTiming
+    return st { totalM = st.totalM + opt }
+  opTiming = getCurrOpTiming oldRegs.pc state
   updImeCntInMem st = st { mem = st.mem { mainMem = updImeCnt st.mem.mainMem } }
 
-getCurrOpTiming :: I16 -> Z80State -> Int
-getCurrOpTiming oldPc st = getOpTiming addr opTimingTable
- where
-  addr = if opCode == 0xCB
+getCurrOpTiming :: forall e. I16 -> Z80State -> Eff (ma :: MemAccess | e) Int
+getCurrOpTiming oldPc st = do
+  opCode <- rd8 oldPc st.mem.mainMem
+  let isExtOp = opCode == 0xCB
+  addr <- if isExtOp
     then rd8 (oldPc+1) st.mem.mainMem
-    else opCode
-  opTimingTable = if opCode == 0xCB
-    then cbOpTimings 
-    else
-      if st.mem.regs.brTkn
-        then branchBasicOpTimings
-        else basicOpTimings
-  opCode = rd8 oldPc st.mem.mainMem
+    else return opCode
+  let opTimingTable = if isExtOp
+        then cbOpTimings 
+        else
+          if st.mem.regs.brTkn
+            then branchBasicOpTimings
+            else basicOpTimings
+  return $ getOpTiming addr opTimingTable
 
 --NOTE is there a better way to set nested properties?
 --consider checking the lens-equivalent in purescript.
@@ -92,28 +99,33 @@ incPc oldPc st =
       }
 
 
-handleGpu :: forall e. I16 -> Z80State -> Eff (canvas :: Canvas | e) Z80State
-handleGpu oldPc st = do
-  gpu' <- gpuStep (getCurrOpTiming oldPc st) (getGpu st.mem.mainMem)
-  let intF' = (if gpu'.vblIntrr then (trace ("vbl-totalM: " ++ show st.totalM) \_ -> (0x01 .|. _)) else id) $ getIntF st.mem.mainMem
+--NOTE change handleGpu to get the op timing itself, instead of reacquiring it here.
+handleGpu :: forall e. Int -> Z80State
+          -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
+handleGpu opTiming st = do
+  gpu' <- gpuStep opTiming (getGpu st.mem.mainMem)
+  let intF' = (if gpu'.vblIntrr then (trace ("vbl-totalM: " ++ show st.totalM) \_ -> (0x01 .|. _))
+                                else id)
+                $ getIntF st.mem.mainMem
   return $ st { mem = st.mem { mainMem =
         setIntF intF'
     <<< setGpu (gpu' { vblIntrr = false })
      $  st.mem.mainMem } }
 
-interruptOp :: Z80State -> Z80State
+interruptOp :: forall e. Z80State -> Eff (ma :: MemAccess | e) Z80State
 interruptOp st = snd res $
   st { mem = st.mem {
-    mainMem = setIme false <<< setIntF (fst res $ getIntF st.mem.mainMem) $ st.mem.mainMem } }
+    mainMem = setIme false
+           <<< setIntF (fst res $ getIntF st.mem.mainMem) $ st.mem.mainMem } }
  where
-  res :: Tuple (Int -> Int) (Z80State -> Z80State)
-  res = fromMaybe (Tuple id id) mRes
+  res :: Tuple (Int -> Int) (Z80State -> Eff (ma :: MemAccess | e) Z80State)
+  res = fromMaybe (Tuple id return) mRes
   mRes = getOnBit (interruptBits st) >>= \x -> case x of
-           1  -> Just $ Tuple (0xFE .&. _) (mm2op $ callRoutine true 0x40 )
-           2  -> Just $ Tuple (0xFD .&. _) (mm2op $ callRoutine true 0x48 )
-           4  -> Just $ Tuple (0xFB .&. _) (mm2op $ callRoutine true 0x50 )
-           8  -> Just $ Tuple (0xF7 .&. _) (mm2op $ callRoutine true 0x58 )
-           16 -> Just $ Tuple (0xEF .&. _) (mm2op $ callRoutine true 0x60 )
+           1  -> Just $ Tuple (0xFE .&. _) (mme2op $ callRoutine true 0x40 )
+           2  -> Just $ Tuple (0xFD .&. _) (mme2op $ callRoutine true 0x48 )
+           4  -> Just $ Tuple (0xFB .&. _) (mme2op $ callRoutine true 0x50 )
+           8  -> Just $ Tuple (0xF7 .&. _) (mme2op $ callRoutine true 0x58 )
+           16 -> Just $ Tuple (0xEF .&. _) (mme2op $ callRoutine true 0x60 )
            otherwise -> Nothing -- NOTE log this
 
 interruptBits :: Z80State -> I8
@@ -123,20 +135,20 @@ checkShldHndlIntrr :: Z80State -> Boolean
 checkShldHndlIntrr st = getIme st.mem.mainMem && interruptBits st /= 0 
 
 
-cleanState :: Z80State
+cleanState :: forall e. Eff (ma :: MemAccess | e) Z80State
 cleanState = 
-  { mem : cleanMem
+  { mem : _
   , totalM : 1
   , halt : false
   , stop : false
-  }
+  } <$> cleanMem
 
-cleanMem :: Mem
+cleanMem :: forall e. Eff (ma :: MemAccess | e) Mem
 cleanMem =
   { regs : cleanRegs
   , svdRegs : cleanSavedRegs
-  , mainMem : cleanMainMem
-  }
+  , mainMem : _
+  } <$> cleanMainMem
 
 cleanRegs :: Regs
 cleanRegs =
@@ -167,12 +179,16 @@ cleanSavedRegs =
 
 --Debug functions
 
-stepTime :: forall e. Z80State -> Eff (canvas :: Canvas, timer :: Timer | e) Z80State
-stepTime state = timeIt timerIx (\_ -> step state)
+stepTime :: forall e. Z80State
+         -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: Timer | e) Z80State
+stepTime state = do
+  currOpCode <- rd8 state.mem.regs.pc state.mem.mainMem
+  currImm <- rd8 (state.mem.regs.pc+1) state.mem.mainMem
+  let timerIx = if (currOpCode `elem` memModifyOps)
+                || (currOpCode == 0xCB && (currImm `elem` cbMemModifyOps))
+                  then 1 else 0
+  timeIt timerIx (\_ -> step state)
  where
-  timerIx = if (currOpCode `elem` memModifyOps)
-            || (currOpCode == 0xCB && (currImm `elem` cbMemModifyOps))
-    then 1 else 0
   memModifyOps =
     [ 0x02 ,0x08 ,0x12 ,0x22 ,0x32 ,0x34 ,0x35 ,0x36 ,0x70 ,0x71
     , 0x72 ,0x73 ,0x74 ,0x75 ,0x77 ,0xc4 ,0xc5 ,0xc7 ,0xcc ,0xcd ,0xcf ,0xd4
@@ -183,8 +199,6 @@ stepTime state = timeIt timerIx (\_ -> step state)
     [ 0x06, 0x0e, 0x16, 0x1e, 0x26, 0x2e, 0x36, 0x3e, 0x86, 0x8e, 0x96, 0x9e
     , 0xa6, 0xae, 0xb6, 0xbe, 0xc6, 0xce, 0xd6, 0xde, 0xe6, 0xee, 0xf6, 0xfe
     ]
-  currOpCode = rd8 state.mem.regs.pc state.mem.mainMem
-  currImm = rd8 (state.mem.regs.pc+1) state.mem.mainMem
 
 traceState :: Z80State -> Z80State
 traceState state@{ mem = oldMem@{regs = oldRegs} } =
@@ -194,21 +208,24 @@ traceState state@{ mem = oldMem@{regs = oldRegs} } =
   {--condTr (shldTrc state) (\_ -> tileMap0Str state.mem) $--}
   {--condTr (shldTrc state) (\_ -> tileSet0Str state.mem) $--}
 
-  {--condTr shldTrc (\_ -> ioArea oldMem) $--}
+  {--condTr (shldTrc state) (\_ -> regsStr oldRegs) $--}
   {--condTr (shldTrc state) (\_ -> pcArea oldMem) $--}
-  condTr (shldTrc state) (\_ -> spArea oldMem) $
+  {--condTr (shldTrc state) (\_ -> spArea oldMem) $--}
+  {--condTr shldTrc (\_ -> ioArea oldMem) $--}
 
   condTr (shldTrc state) (\_ -> "IntF: " ++ toHexStr 2 (getIntF state.mem.mainMem)) $
   condTr (shldTrc state) (\_ -> "IntE: " ++ toHexStr 2 (getIntE state.mem.mainMem)) $
   condTr (shldTrc state) (\_ -> "Ime: " ++ show (getIme state.mem.mainMem)) $
+
   {--condTr shldTrc (\_ -> "IntBits: " ++ toHexStr 2 intBits) $--}
   {--condTr shldTrc (\_ -> "getOnBit: " ++ show (getOnBit intBits)) $--}
   {--condTr shldTrc (\_ -> "shldHndlIntrr: " ++ show (shldHndlIntrr state)) $--}
   {--condTr shldTrc (\_ -> "intF after interruptop: " ++ toHexStr 2 (getIntF (interruptOp state).mem.mainMem)) $--}
-  condTr (shldTrc state) (\_ -> regsStr oldRegs) $
+
   {--condTr (shldTrc state) (\_ -> "enbCnt: " ++ show (getImeEnableCnt state.mem.mainMem)) $--}
-  condTr (shldTrc state) (\_ -> rd8RangeStr "FF40" 0xFF40 0xFF40 state.mem) $
-  condTr (shldTrc state) (\_ -> rd8RangeStr "FF44" 0xFF44 0xFF44 state.mem) $
+
+  {--condTr (shldTrc state) (\_ -> rd8RangeStr "FF40" 0xFF40 0xFF40 state.mem) $--}
+  {--condTr (shldTrc state) (\_ -> rd8RangeStr "FF44" 0xFF44 0xFF44 state.mem) $--}
   state
 
 shldTrc :: Z80State -> Boolean
