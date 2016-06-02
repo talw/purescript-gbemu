@@ -3,6 +3,7 @@ module Types where
 import Prelude
 import Data.Sequence
 import Data.Array
+import Control.Monad.Eff
 
 type Z80State =
   { mem :: Mem
@@ -41,8 +42,9 @@ newtype MainMem = MainMem
   , zram         :: MemSection
   }
 
-foreign import data MemAccess :: !
 foreign import data MemSection :: *
+--NOTE: make effect more granular, i.e. MemAccess(read) and MemModify(write)
+foreign import data MemAccess :: !
 
 type Gpu = 
   { mTimer    :: Int
@@ -88,7 +90,12 @@ derive instance eqGpuMode :: Eq GpuMode
 
 newtype OpCodeMap = OpCodeMap (Array (Z80State -> Z80State))
 
-type Regs =
+newtype Regs = Regs RegsObj
+
+--NOTE; hide, RegsObj. Regs is a modifiable type.
+--In order to ensure no one accesses it's content outside of an Eff (RegsAccess)
+--computation, the inner object will be hidden
+type RegsObj =
   { pc  :: I16
   , sp  :: I16
   , a   :: I8
@@ -102,8 +109,10 @@ type Regs =
   , brTkn :: Boolean
   }
 
+foreign import data RegsAccess :: !
+
 type GetReg = Regs -> I8
-type SetReg = I8 -> Regs -> Regs
+type SetReg = forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
 
 type SavedRegs =
   { a :: I8
@@ -117,26 +126,26 @@ type SavedRegs =
   }
 
 {--pc, sp, a, b, c, d, e, h, l, f :: Regs -> Number--}
-pc = _.pc
-sp = _.sp
-a  = _.a 
-b  = _.b 
-c  = _.c 
-d  = _.d 
-e  = _.e 
-h  = _.h 
-l  = _.l 
-f  = _.f  
+{--pc = _.pc--}
+{--sp = _.sp--}
+{--a  = _.a --}
+{--b  = _.b --}
+{--c  = _.c --}
+{--d  = _.d --}
+{--e  = _.e --}
+{--h  = _.h --}
+{--l  = _.l --}
+{--f  = _.f  --}
 
 {--setA, setB, setC, setD, setE, setH, setL, setF :: Number -> Regs -> Regs--}
-setA x = _ { a = x }
-setB x = _ { b = x }
-setC x = _ { c = x }
-setD x = _ { d = x }
-setE x = _ { e = x }
-setH x = _ { h = x }
-setL x = _ { l = x }
-setF x = _ { f = x }
+{--setA x = _ { a = x }--}
+{--setB x = _ { b = x }--}
+{--setC x = _ { c = x }--}
+{--setD x = _ { d = x }--}
+{--setE x = _ { e = x }--}
+{--setH x = _ { h = x }--}
+{--setL x = _ { l = x }--}
+{--setF x = _ { f = x }--}
 
 --NOTE:: If you make these types 'newtype's you gain compile-time safety
 --at the cost of verbosity. Consider doing the change

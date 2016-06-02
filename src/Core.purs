@@ -6,11 +6,13 @@ import Data.Tuple
 import Data.Maybe
 import Data.Either
 import Data.Foldable
+import Data.Functor
 import Control.Monad.Eff
 import Control.Monad
 import Control.Bind
 
 import Types
+import Regs
 import MainMem
 import Ops
 import OpCodeMap
@@ -50,22 +52,23 @@ step state@{ mem = oldMem@{regs = oldRegs} } = do
   handleGpu opt
     <=< (return <<< updImeCntInMem)
     <=< incTime
-    <=< (return <<< incPc oldRegs.pc)
+    <=< incPc oldPc
     <=< op
     {--<<< traceState--}
      $  state
  where
+  oldPc = pc oldRegs
   op st = if checkShldHndlIntrr st
     then interruptOp st
     else regularOp st
   regularOp st = do
     coc <- getCurrOpCode st
     getCpuOp coc basicOps st
-  getCurrOpCode st = rd8 st.mem.regs.pc st.mem.mainMem
+  getCurrOpCode st = rd8 (pc st.mem.regs) st.mem.mainMem
   incTime st@{totalM} = do
     opt <- opTiming
     return st { totalM = st.totalM + opt }
-  opTiming = getCurrOpTiming oldRegs.pc state
+  opTiming = getCurrOpTiming oldPc state
   updImeCntInMem st = st { mem = st.mem { mainMem = updImeCnt st.mem.mainMem } }
 
 getCurrOpTiming :: forall e. I16 -> Z80State -> Eff (ma :: MemAccess | e) Int
@@ -78,26 +81,18 @@ getCurrOpTiming oldPc st = do
   let opTimingTable = if isExtOp
         then cbOpTimings 
         else
-          if st.mem.regs.brTkn
+          if brTkn st.mem.regs
             then branchBasicOpTimings
             else basicOpTimings
   return $ getOpTiming addr opTimingTable
 
 --NOTE is there a better way to set nested properties?
 --consider checking the lens-equivalent in purescript.
-incPc :: I8 -> Z80State -> Z80State
+incPc :: forall e. I8 -> Z80State -> Eff (ma :: MemAccess | e) Z80State
 incPc oldPc st =
-  if oldPc /= st.mem.regs.pc
-    then st
-    else
-      st {
-        mem = st.mem {
-          regs = st.mem.regs {
-            pc = 65535 .&. (st.mem.regs.pc + 1)
-          }
-        }
-      }
-
+  if oldPc /= pc st.mem.regs
+    then return st
+    else st <$ setPC (65535 .&. (pc st.mem.regs + 1)) st.mem.regs
 
 --NOTE change handleGpu to get the op timing itself, instead of reacquiring it here.
 handleGpu :: forall e. Int -> Z80State
@@ -151,40 +146,13 @@ cleanMem =
   , mainMem : _
   } <$> cleanMainMem
 
-cleanRegs :: Regs
-cleanRegs =
-  { pc    : 0x0101
-  , sp    : 0xFFFE
-  , a     : 0x01
-  , b     : 0
-  , c     : 0x13
-  , d     : 0
-  , e     : 0xD8
-  , h     : 0x01
-  , l     : 0x4D
-  , f     : 0xB0
-  , brTkn : false
-  }
-
-cleanSavedRegs :: SavedRegs
-cleanSavedRegs =
-  { a  : 0
-  , b  : 0
-  , c  : 0
-  , d  : 0
-  , e  : 0
-  , h  : 0
-  , l  : 0
-  , f  : 0
-  }
-
 --Debug functions
 
 stepTime :: forall e. Z80State
          -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: Timer | e) Z80State
 stepTime state = do
-  currOpCode <- rd8 state.mem.regs.pc state.mem.mainMem
-  currImm <- rd8 (state.mem.regs.pc+1) state.mem.mainMem
+  currOpCode <- rd8 (pc state.mem.regs) state.mem.mainMem
+  currImm <- rd8 (pc state.mem.regs + 1) state.mem.mainMem
   let timerIx = if (currOpCode `elem` memModifyOps)
                 || (currOpCode == 0xCB && (currImm `elem` cbMemModifyOps))
                   then 1 else 0
@@ -209,7 +177,7 @@ traceState state@{ mem = oldMem@{regs = oldRegs} } =
   {--condTr (shldTrc state) (\_ -> tileMap0Str state.mem) $--}
   {--condTr (shldTrc state) (\_ -> tileSet0Str state.mem) $--}
 
-  {--condTr (shldTrc state) (\_ -> regsStr oldRegs) $--}
+  condTr (shldTrc state) (\_ -> regsStr oldRegs) $
   {--condTr (shldTrc state) (\_ -> pcArea oldMem) $--}
   {--condTr (shldTrc state) (\_ -> spArea oldMem) $--}
   {--condTr shldTrc (\_ -> ioArea oldMem) $--}
@@ -235,18 +203,18 @@ shldTrc state = false
 {--shldTrc state = state.mem.regs.pc == 0x0405 || state.mem.regs.pc == 0x0371--}
 
 regsStr :: Regs -> String
-regsStr regs = "af: "    ++ af
-          ++ "\nbc: "    ++ bc
-          ++ "\nde: "    ++ de
-          ++ "\nhl: "    ++ hl
-          ++ "\nsp: "    ++ sp
-          ++ "\npc: "    ++ pc
-          ++ "\nbrTkn: " ++ show regs.brTkn
+regsStr regs = "af: "    ++ afVal
+          ++ "\nbc: "    ++ bcVal
+          ++ "\nde: "    ++ deVal
+          ++ "\nhl: "    ++ hlVal
+          ++ "\nsp: "    ++ spVal
+          ++ "\npc: "    ++ pcVal
+          ++ "\nbrTkn: " ++ show (brTkn regs)
  where
-  af = toHexStr 4 $ joinRegs a f regs
-  bc = toHexStr 4 $ joinRegs b c regs
-  de = toHexStr 4 $ joinRegs d e regs
-  hl = toHexStr 4 $ joinRegs h l regs
-  sp = toHexStr 4 $ regs.sp
-  pc = toHexStr 4 $ regs.pc
+  afVal = toHexStr 4 $ joinRegs a f regs
+  bcVal = toHexStr 4 $ joinRegs b c regs
+  deVal = toHexStr 4 $ joinRegs d e regs
+  hlVal = toHexStr 4 $ joinRegs h l regs
+  spVal = toHexStr 4 $ sp regs
+  pcVal = toHexStr 4 $ pc regs
 

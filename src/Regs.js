@@ -2,8 +2,8 @@
 
 // module Regs
 
-exports.innerSetPC=function(rs) {
-  return function(val) {
+exports.innerSetPC=function(val) {
+  return function(rs) {
     return function() {
       rs.pc = val;
       return rs;
@@ -11,8 +11,8 @@ exports.innerSetPC=function(rs) {
   }
 }
 
-exports.innerSetSP=function(rs) {
-  return function(val) {
+exports.innerSetSP=function(val) {
+  return function(rs) {
     return function() {
       rs.sp = val;
       return rs;
@@ -20,8 +20,8 @@ exports.innerSetSP=function(rs) {
   }
 }
 
-exports.innerSetA=function(rs) {
-  return function(val) {
+exports.innerSetA=function(val) {
+  return function(rs) {
     return function() {
       rs.a = val;
       return rs;
@@ -29,8 +29,8 @@ exports.innerSetA=function(rs) {
   }
 }
 
-exports.innerSetB=function(rs) {
-  return function(val) {
+exports.innerSetB=function(val) {
+  return function(rs) {
     return function() {
       rs.b = val;
       return rs;
@@ -38,8 +38,8 @@ exports.innerSetB=function(rs) {
   }
 }
 
-exports.innerSetC=function(rs) {
-  return function(val) {
+exports.innerSetC=function(val) {
+  return function(rs) {
     return function() {
       rs.c = val;
       return rs;
@@ -47,8 +47,8 @@ exports.innerSetC=function(rs) {
   }
 }
 
-exports.innerSetD=function(rs) {
-  return function(val) {
+exports.innerSetD=function(val) {
+  return function(rs) {
     return function() {
       rs.d = val;
       return rs;
@@ -56,8 +56,8 @@ exports.innerSetD=function(rs) {
   }
 }
 
-exports.innerSetE=function(rs) {
-  return function(val) {
+exports.innerSetE=function(val) {
+  return function(rs) {
     return function() {
       rs.e = val;
       return rs;
@@ -65,8 +65,8 @@ exports.innerSetE=function(rs) {
   }
 }
 
-exports.innerSetH=function(rs) {
-  return function(val) {
+exports.innerSetH=function(val) {
+  return function(rs) {
     return function() {
       rs.h = val;
       return rs;
@@ -74,8 +74,8 @@ exports.innerSetH=function(rs) {
   }
 }
 
-exports.innerSetL=function(rs) {
-  return function(val) {
+exports.innerSetL=function(val) {
+  return function(rs) {
     return function() {
       rs.l = val;
       return rs;
@@ -83,8 +83,8 @@ exports.innerSetL=function(rs) {
   }
 }
 
-exports.innerSetF=function(rs) {
-  return function(val) {
+exports.innerSetF=function(val) {
+  return function(rs) {
     return function() {
       rs.f = val;
       return rs;
@@ -92,8 +92,8 @@ exports.innerSetF=function(rs) {
   }
 }
 
-exports.innerSetBrTkn=function(rs) {
-  return function(val) {
+exports.innerSetBrTkn=function(val) {
+  return function(rs) {
     return function() {
       rs.brTkn = val;
       return rs;

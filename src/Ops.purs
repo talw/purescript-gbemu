@@ -11,6 +11,7 @@ import Types
 import MainMem
 import Utils
 import Debug
+import Regs
 
 --NOTE: consider moving the timings to 2D arrays.
 --separate from the opcode's logic
@@ -19,62 +20,64 @@ import Debug
 -- =========
 
 --ADD A,R
-addRegToA :: GetReg -> Regs -> Regs
+addRegToA :: forall e. GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 addRegToA getReg regs = addXToA (getReg regs) regs
 
 --ADD A,(HL)
 addHLMemToA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 addHLMemToA { mainMem, regs } = do
   hlMem <- rd8 (joinRegs h l regs) mainMem
-  return $ addXToA hlMem regs
+  addXToA hlMem regs
 
 --ADD A,n
 addImmToA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 addImmToA { mainMem, regs } = do
-  imm <- rd8 (regs.pc+1) mainMem
-  return (addXToA imm regs) { pc = regs.pc + 2 }
+  imm <- rd8 ((pc regs)+1) mainMem
+  addXToA imm regs
+  setPC (pc regs + 2) regs
 
-addXToA :: I8 -> Regs -> Regs
+addXToA :: forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
 addXToA x regs =
-  regs {a = sum.res, f = sum.flags }
- where sum = addI8s regs.a x
+  setA sum.res =<< setF sum.flags regs
+ where sum = addI8s (a regs) x
 
 --ADC A,R
-addRegCarryToA :: GetReg -> Regs -> Regs
+addRegCarryToA :: forall e. GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 addRegCarryToA getReg regs = addXCarryToA (getReg regs) regs
 
 --ADC A,(HL)
 addHLMemCarryToA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 addHLMemCarryToA { mainMem, regs } = do
   hlMem <- rd8 (joinRegs h l regs) mainMem
-  return $ addXCarryToA hlMem regs 
+  addXCarryToA hlMem regs
 
 --ADC A,n
 addImmCarryToA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 addImmCarryToA { mainMem, regs } = do
-  imm <- rd8 (regs.pc+1) mainMem
-  return (addXCarryToA imm regs) { pc = regs.pc + 2 }
+  imm <- rd8 ((pc regs)+1) mainMem
+  addXCarryToA imm regs
+  setPC (pc regs + 2) regs
 
 --NOTE: Test edge case of carry flag of 1 that causes a half-carry,
 --Is the half-carry flag set correctly?
-addXCarryToA :: I8 -> Regs -> Regs
+addXCarryToA :: forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
 addXCarryToA x regs =
-  regs {a = sum.res, f = f'}
+  setA sum.res =<< setF f' regs
  where
-  --Overriding addI8's half-carry flag because it used regs.a+carry
+  --Overriding addI8's half-carry flag because it used (a regs)+carry
   --Which is essential for the other flags, but not for this one.
-  f' = setHalfCarryFlag8 x regs.a sum.res sum.flags
-  sum = addI8s (regs.a + carry) x
-  carry = if regs.f .&. carryFlag /= 0 then 1 else 0
+  f' = setHalfCarryFlag8 x (a regs) sum.res sum.flags
+  sum = addI8s ((a regs) + carry) x
+  carry = if (f regs) .&. carryFlag /= 0 then 1 else 0
 
 --ADD SP,|n|
 addImmToSP :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 addImmToSP { regs, mainMem } = do
-  immAbs <- absI8 <$> rd8 (regs.pc+1) mainMem
-  let sp' = (immAbs + regs.sp) .&. 0xFFFF
-      f' =  testHalfCarryFlag16 immAbs regs.sp sp'
-        .|. testHalfCarryFlag8 immAbs regs.sp sp'
-  return regs {sp = sp', pc = regs.pc + 2, f = f'}
+  immAbs <- absI8 <$> rd8 ((pc regs)+1) mainMem
+  let sp' = (immAbs + (sp regs)) .&. 0xFFFF
+      f' =  testHalfCarryFlag16 immAbs (sp regs) sp'
+        .|. testHalfCarryFlag8 immAbs (sp regs) sp'
+  setSP sp' =<< setPC ((pc regs) + 2) =<< setF f' regs
 
 addI8s :: I8 -> I8 -> { res :: I8, flags :: I8 }
 addI8s x1 x2 = { res , flags }
@@ -86,22 +89,22 @@ addI8s x1 x2 = { res , flags }
   sum = x1 + x2
 
 --ADD HL,RR
-add2RegsToHL :: GetReg -> GetReg -> Regs -> Regs
+add2RegsToHL :: forall e. GetReg -> GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 add2RegsToHL msByteReg lsByteReg regs =
-  regs { h = split.ms, l = split.ls, f = sum.flags } 
+  setH split.ms =<< setL split.ls =<< setF sum.flags regs
  where
   split = splitI16 sum.res
-  sum = addI16s hl joinedRegs regs.f
+  sum = addI16s hl joinedRegs (f regs)
   joinedRegs = joinRegs msByteReg lsByteReg regs
   hl = joinRegs h l regs
 
 --ADD HL,SP
-addSPToHL :: Regs -> Regs
+addSPToHL :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
 addSPToHL regs =
-  regs { h = split.ms, l = split.ls, f = sum.flags } 
+  setH split.ms =<< setL split.ls =<< setF sum.flags regs
  where
   split = splitI16 sum.res
-  sum = addI16s hl regs.sp regs.f
+  sum = addI16s hl (sp regs) (f regs)
   hl = joinRegs h l regs
 
 addI16s :: I8 -> I16 -> I16 -> { res :: I16, flags :: I8 }
@@ -122,53 +125,55 @@ addI16s x1 x2 oldFlags = { res, flags }
 -- ============
 
 --SUB A,R
-subRegFromA :: GetReg -> Regs -> Regs
+subRegFromA :: forall e. GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 subRegFromA getReg regs = subXFromA (getReg regs) regs
 
 --SUB A,(HL)
 subHLMemFromA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 subHLMemFromA { mainMem, regs } = do
   hlMem <- rd8 (joinRegs h l regs) mainMem
-  return $ subXFromA hlMem regs
+  subXFromA hlMem regs
 
 --SUB A,n
 subImmFromA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 subImmFromA { mainMem, regs } = do
-  imm <- rd8 (regs.pc+1) mainMem
-  return (subXFromA imm regs) { pc = regs.pc + 2 }
+  imm <- rd8 ((pc regs)+1) mainMem
+  subXFromA imm regs
+  setPC (pc regs + 2) regs
 
 --NOTE: Subtractions and additions are relatively similar. Consider
 --Using same functions for both, if it doesn't obfuscate much.
-subXFromA :: I8 -> Regs -> Regs
+subXFromA :: forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
 subXFromA x regs =
-  regs {a = diff.res, f = diff.flags}
- where diff = subI8s regs.a x
+  setA diff.res =<< setF diff.flags regs
+ where diff = subI8s (a regs) x
 
 --SBC A,R
-subRegCarryFromA :: GetReg -> Regs -> Regs
+subRegCarryFromA :: forall e. GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 subRegCarryFromA getReg regs = subXCarryFromA (getReg regs) regs
 
 --SBC A,(HL)
 subHLMemCarryFromA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
-subHLMemCarryFromA { mainMem, regs } =
-  (\mhl -> subXCarryFromA mhl regs)
-    <$> rd8 (joinRegs h l regs) mainMem
+subHLMemCarryFromA { mainMem, regs } = do
+  mhl <- rd8 (joinRegs h l regs) mainMem
+  subXCarryFromA mhl regs
 
 --SBC A,n
 subImmCarryToA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 subImmCarryToA { mainMem, regs } = do
-  imm <- rd8 (regs.pc+1) mainMem
-  return (subXCarryFromA imm regs) { pc = regs.pc + 2 }
+  imm <- rd8 ((pc regs)+1) mainMem
+  subXCarryFromA imm regs
+  setPC (pc regs + 2) regs
 
 --NOTE: Test edge case of carry flag of 1 that causes a half-carry,
 --Is the half-carry flag set correctly?
-subXCarryFromA :: I8 -> Regs -> Regs
+subXCarryFromA :: forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
 subXCarryFromA x regs =
-  regs {a = diff.res, f = f'}
+  setA diff.res =<< setF f' regs
  where
-  f' = setHalfCarryFlag8 x regs.a diff.res diff.flags
-  diff = subI8s (regs.a - carry) x
-  carry = if regs.f .&. carryFlag /= 0 then 1 else 0
+  f' = setHalfCarryFlag8 x (a regs) diff.res diff.flags
+  diff = subI8s ((a regs) - carry) x
+  carry = if (f regs) .&. carryFlag /= 0 then 1 else 0
 
 subI8s :: I8 -> I8 -> { res :: I8, flags :: I8 }
 subI8s x1 x2 = { res , flags }
@@ -184,24 +189,25 @@ subI8s x1 x2 = { res , flags }
 -- ==================
 
 --AND A,R
-andOpRegIntoA :: GetReg -> Regs -> Regs
-andOpRegIntoA = adjFlag halfCarryFlag `cmp2` boolOpRegIntoA (.&.)
+andOpRegIntoA :: forall e. GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
+andOpRegIntoA getReg =  adjFlag halfCarryFlag
+                    <=< boolOpRegIntoA (.&.) getReg
 
 --OR A,R
-orOpRegIntoA :: GetReg -> Regs -> Regs
+orOpRegIntoA :: forall e. GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 orOpRegIntoA = boolOpRegIntoA (.|.)
 
 --XOR A,R
-xorOpRegIntoA :: GetReg -> Regs -> Regs
+xorOpRegIntoA :: forall e. GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 xorOpRegIntoA = boolOpRegIntoA (.^.)
 
-boolOpRegIntoA :: (I8 -> I8 -> I8) -> GetReg -> Regs -> Regs
+boolOpRegIntoA :: forall e. (I8 -> I8 -> I8) -> GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 boolOpRegIntoA op getReg regs = boolOpXIntoA op (getReg regs) regs
 
 --AND A,(HL)
 andOpHLMemIntoA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
-andOpHLMemIntoA = (adjFlag halfCarryFlag <$> _)
-               <<< boolOpHlMemIntoA (.&.)
+andOpHLMemIntoA =  adjFlag halfCarryFlag 
+               <=< boolOpHlMemIntoA (.&.)
 
 --OR A,(HL)
 orOpHLMemIntoA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
@@ -214,12 +220,12 @@ xorOpHLMemIntoA = boolOpHlMemIntoA (.^.)
 boolOpHlMemIntoA  :: forall e. (I8 -> I8 -> I8) -> Mem -> Eff (ma :: MemAccess | e) Regs
 boolOpHlMemIntoA op { mainMem, regs } = do
   hlMem <- rd8 (joinRegs h l regs) mainMem
-  return $ boolOpXIntoA op hlMem regs
+  boolOpXIntoA op hlMem regs
 
 --AND A,Imm
 andOpImmIntoA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
-andOpImmIntoA = (adjFlag halfCarryFlag <$> _)
-             <<< boolOpImmIntoA (.&.)
+andOpImmIntoA =  adjFlag halfCarryFlag
+             <=< boolOpImmIntoA (.&.)
 
 --OR A,Imm
 orOpImmIntoA :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
@@ -231,49 +237,50 @@ xorOpImmIntoA = boolOpImmIntoA (.^.)
 
 boolOpImmIntoA :: forall e. (I8 -> I8 -> I8) -> Mem -> Eff (ma :: MemAccess | e) Regs
 boolOpImmIntoA op { mainMem, regs } = do
-  imm <- rd8 (regs.pc+1) mainMem
-  return (boolOpXIntoA op imm regs) {pc = regs.pc + 2}
+  imm <- rd8 ((pc regs)+1) mainMem
+  boolOpXIntoA op imm regs
+  setPC (pc regs + 2) regs
 
-boolOpXIntoA :: (I8 -> I8 -> I8) -> I8 -> Regs -> Regs
+boolOpXIntoA :: forall e. (I8 -> I8 -> I8) -> I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
 boolOpXIntoA op x regs =
-  regs { a = a', f = testZeroFlag a' }
- where a' = (regs.a `op` x) .&. 255
+  setA a' =<< setF (testZeroFlag a') regs
+ where a' = ((a regs) `op` x) .&. 255
 
 -- Bit operations
 -- ==============
 
 --CPL
-cmplA :: Regs -> Regs
-cmplA regs = regs { a = a', f = f' }
+cmplA :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
+cmplA regs = setA a' =<< setF f' regs
  where
-   a' = 255 .^. regs.a
+   a' = 255 .^. (a regs)
    f' =  setFlag halfCarryFlag
      <<< setFlag subtractionFlag
-      $  regs.f
+      $  (f regs)
 
 --BIT N,R
-testBitNOfReg :: I8 -> GetReg -> Regs -> Regs
+testBitNOfReg :: forall e. I8 -> GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 testBitNOfReg n getReg regs = testBitNOfX n (getReg regs) regs
 
 --BIT N,(HL)
 testBitNOfHLMem :: forall e. I8 -> Mem -> Eff (ma :: MemAccess | e) Regs
 testBitNOfHLMem n { mainMem, regs } = do
   hlMem <- rd8 (joinRegs h l regs) mainMem
-  return $ testBitNOfX n hlMem regs
+  testBitNOfX n hlMem regs
 
-testBitNOfX :: Int -> I8 -> Regs -> Regs
-testBitNOfX n x regs = regs { f = f' }
+testBitNOfX :: forall e. Int -> I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
+testBitNOfX n x regs = setF f' regs
  where
   f' =  setZeroFlag bitTest
      $  unsetFlag subtractionFlag
      $  halfCarryFlag
-    .|. (regs.f .&. carryFlag) -- NOTE: should it be 0x1F instead?
+    .|. ((f regs) .&. carryFlag) -- NOTE: should it be 0x1F instead?
   bitTest = x .&. (1 `shl` n)
 
 --SET N,R
 --RES N,R
-setBitNOfReg :: Boolean -> Int -> SetReg -> GetReg
-               -> Regs -> Regs
+setBitNOfReg :: forall e. Boolean -> Int -> SetReg -> GetReg
+               -> Regs -> Eff (ma :: MemAccess | e) Regs
 setBitNOfReg setVal n setReg getReg regs = setReg reg' regs
  where reg' = setBitNOfX setVal n (getReg regs)
 
@@ -301,25 +308,26 @@ derive instance eqDir :: Eq Dir
 
 -- RL[C] A, base-opcode
 -- RR[C] A, base-opcode
-rotA :: Dir -> Boolean -> Regs -> Regs
-rotA dir isCarryRot regs = regs { a = rotated.res, f = rotated.flags }
- where rotated = rotX {dir,isCarryRot,isCB:false} regs.a regs.f
+rotA :: forall e. Dir -> Boolean -> Regs -> Eff (ma :: MemAccess | e) Regs
+rotA dir isCarryRot regs = setA rotated.res =<< setF rotated.flags regs
+ where rotated = rotX {dir,isCarryRot,isCB:false} (a regs) (f regs)
 
 -- RL[C] R, CB-prefix instruction
 -- RR[C] R, CB-prefix instruction
-rotReg :: Dir -> Boolean -> SetReg -> GetReg -> Regs -> Regs
+rotReg :: forall e. Dir -> Boolean -> SetReg -> GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 rotReg dir isCarryRot setReg getReg regs =
-  setReg rotated.res regs { f = rotated.flags }
- where rotated = rotX {dir,isCarryRot,isCB:true} (getReg regs) regs.f
+  setReg rotated.res =<< setF rotated.flags regs
+ where rotated = rotX {dir,isCarryRot,isCB:true} (getReg regs) (f regs)
 
 -- RL[C] (HL)
 -- RR[C] (HL)
 rotHLMem :: forall e. Dir -> Boolean -> Mem -> Eff (ma :: MemAccess | e) Mem
 rotHLMem dir isCarryRot mem@{mainMem,regs} = do
   hlMem <- rd8 addr mainMem
-  let rotated = rotX {dir,isCarryRot,isCB:true} hlMem regs.f
+  let rotated = rotX {dir,isCarryRot,isCB:true} hlMem (f regs)
   mainMem' <- wr8 rotated.res addr mainMem
-  return mem { mainMem = mainMem', regs = regs { f = rotated.flags } }
+  setF rotated.flags regs
+  return mem { mainMem = mainMem' }
  where
   addr = joinRegs h l regs
 
@@ -354,17 +362,18 @@ rotX { dir, isCarryRot, isCB } x oldFlags = { res, flags }
 --SLA R
 --SRA R preserve sign
 --SRL R
-shiftReg :: Dir -> Boolean -> SetReg -> GetReg
-         -> Regs -> Regs
+shiftReg :: forall e. Dir -> Boolean -> SetReg -> GetReg
+         -> Regs -> Eff (ma :: MemAccess | e) Regs
 shiftReg dir sign setReg getReg regs =
-  setReg shifted.res regs { f = shifted.flags }
+  setReg shifted.res =<< setF shifted.flags regs
  where shifted = shiftX dir sign $ getReg regs
 
 --NOTE fix inconsistency in naming, memhl / hlmem
 shiftMemHL :: forall e. Dir -> Boolean -> Mem -> Eff (ma :: MemAccess | e) Mem
 shiftMemHL dir sign mem@{mainMem,regs} = do
   shifted <- shiftX dir sign <$> rd8 addr mainMem
-  mem { mainMem = _, regs = regs { f = shifted.flags } }
+  setF shifted.flags regs
+  mem { mainMem = _ }
     <$> wr8 shifted.res addr mainMem
  where addr = joinRegs h l regs
 
@@ -389,43 +398,43 @@ shiftX dir sign x = { res, flags }
 -- =======================
 
 --INC R
-incReg :: GetReg -> SetReg -> Regs -> Regs
+incReg :: forall e. GetReg -> SetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 incReg = incDecReg incI8
 
 --DEC R
-decReg :: GetReg -> SetReg -> Regs -> Regs
-decReg getReg setReg regs = regs' { f = setFlag subtractionFlag regs'.f }
-  where regs' = (incDecReg decI8 getReg setReg regs)
-  
+decReg :: forall e. GetReg -> SetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
+decReg getReg setReg regs = do
+  incDecReg decI8 getReg setReg regs
+  adjFlag subtractionFlag regs
 
-incDecReg :: (I8 -> { res :: I8, carry :: Boolean })
-          -> GetReg -> SetReg -> Regs -> Regs
+incDecReg :: forall e. (I8 -> { res :: I8, carry :: Boolean })
+          -> GetReg -> SetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 incDecReg op getReg setReg regs =
-  setReg inced.res regs {f = f'}
+  setReg inced.res =<< setF f' regs
  where
   f' =  testZeroFlag inced.res
     .|. testHalfCarryFlag8 1 targetReg inced.res
-    .|. (carryFlag .&. regs.f)
+    .|. (carryFlag .&. (f regs))
   inced = op targetReg
   targetReg = getReg regs
 
 --INC RR
-incRegWithCarry :: GetReg -> GetReg -> SetReg -> SetReg
-                -> Regs -> Regs
+incRegWithCarry :: forall e. GetReg -> GetReg -> SetReg -> SetReg
+                -> Regs -> Eff (ma :: MemAccess | e) Regs
 incRegWithCarry = incDecRegWithCarry incI8
 
 --DEC RR
-decRegWithCarry :: GetReg -> GetReg -> SetReg -> SetReg
-                -> Regs -> Regs
+decRegWithCarry :: forall e. GetReg -> GetReg -> SetReg -> SetReg
+                -> Regs -> Eff (ma :: MemAccess | e) Regs
 decRegWithCarry = incDecRegWithCarry decI8
 
 --NOTE: consider refactoring to something along the lines of
 --"split2Regs . incI16 . joinRegs", if you have leeway, performance-wise.
-incDecRegWithCarry :: (I8 -> { res :: I8, carry :: Boolean })
+incDecRegWithCarry :: forall e. (I8 -> { res :: I8, carry :: Boolean })
           -> GetReg -> GetReg -> SetReg -> SetReg
-          -> Regs -> Regs
+          -> Regs -> Eff (ma :: MemAccess | e) Regs
 incDecRegWithCarry op getCarryReg getMainReg setCarryReg setMainReg regs = 
-  setCarryReg carryReg' <<< setMainReg mainReg' $ regs
+  setCarryReg carryReg' =<< setMainReg mainReg' regs
  where
   carryReg' = (if mainRegInc.carry then _.res <<< op else id)
     $ getCarryReg regs
@@ -433,15 +442,15 @@ incDecRegWithCarry op getCarryReg getMainReg setCarryReg setMainReg regs =
   mainRegInc = op $ getMainReg regs
 
 --INC SP
-incSP :: Regs -> Regs
+incSP :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
 incSP = incDecSP $ \x -> 0xFFFF .&. (x + 1)
 
 --DEC SP
-decSP :: Regs -> Regs
+decSP :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
 decSP = incDecSP $ \x -> 0xFFFF .&. (x - 1)
 
-incDecSP :: (I16 -> I16) -> Regs -> Regs
-incDecSP op regs = regs {sp = op $ regs.sp}
+incDecSP :: forall e. (I16 -> I16) -> Regs -> Eff (ma :: MemAccess | e) Regs
+incDecSP op regs = setSP (op $ sp regs) regs
 
 --INC (HL)
 incHLMem :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
@@ -450,14 +459,16 @@ incHLMem = incDecHLMem incI8
 --DEC (HL)
 decHLMem :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
 decHLMem mem = do
- res <- incDecHLMem decI8 mem 
- return res { regs = adjFlag subtractionFlag res.regs }
+ mem' <- incDecHLMem decI8 mem 
+ adjFlag subtractionFlag mem.regs
+ return mem'
 
 incDecHLMem :: forall e. (I8 -> { res :: I8, carry :: Boolean })
             -> Mem -> Eff (ma :: MemAccess | e) Mem
 incDecHLMem op mem@{mainMem,regs} = do
   inced <- op <$> rd8 addr mainMem
-  mem { mainMem = _, regs = regs {f = testZeroFlag inced.res} }
+  setF (testZeroFlag inced.res) regs
+  mem { mainMem = _ }
     <$> wr8 inced.res addr mainMem
  where addr = joinRegs h l regs
 
@@ -475,45 +486,47 @@ decI8 i8 = { res : i8', carry : i8' == 255 }
 -- =====
 
 --LD R,R
-ldRegFromReg :: SetReg -> GetReg
-      -> Regs -> Regs
+ldRegFromReg :: forall e. SetReg -> GetReg
+      -> Regs -> Eff (ma :: MemAccess | e) Regs
 ldRegFromReg setDestReg getSrcReg regs = setDestReg (getSrcReg regs) regs
 
 --LD (nn),SP
 ldMemImmFromSP :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
 ldMemImmFromSP mem@{mainMem, regs} = do
-  addr <- rd16 (regs.pc+1) mainMem
-  mem { mainMem = _, regs = regs { pc = regs.pc + 3 } }
-    <$> wr16 regs.sp addr mainMem
+  addr <- rd16 ((pc regs)+1) mainMem
+  setPC ((pc regs) + 3) regs
+  mem { mainMem = _ }
+    <$> wr16 (sp regs) addr mainMem
 
 --LD SP,HL
-ldSPFromHL :: Regs -> Regs
-ldSPFromHL regs  = 
-  regs { sp = sp' }
+ldSPFromHL :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
+ldSPFromHL regs  = setSP sp' regs
  where sp' = joinRegs h l regs
   
 ldSPFromImmMem :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
-ldSPFromImmMem { mainMem, regs } = 
-  regs { sp = _, pc = regs.pc + 3 } <$> rd16 (regs.pc+1) mainMem
+ldSPFromImmMem { mainMem, regs } = do
+  sp' <- rd16 ((pc regs)+1) mainMem
+  setSP sp' =<< setPC ((pc regs) + 3) regs
   
 --LD RR,nn
 ldTwoRegsFromImm :: forall e. SetReg -> SetReg
                  -> Mem -> Eff (ma :: MemAccess | e) Regs
 ldTwoRegsFromImm setHighReg setLowReg mem@{regs} = do
-  regs'  <- ldRegFromMem setLowReg (regs.pc+1) mem
-  regs'' <- ldRegFromMem setHighReg (regs.pc+2) $ mem { regs = regs' }
-  return regs'' { pc = regs.pc+3 }
+  ldRegFromMem setLowReg (pc regs + 1) mem
+  ldRegFromMem setHighReg (pc regs + 2)  mem
+  setPC (pc regs + 3) regs
 
 --LD R,(IOC)
 ldRegFromFF00CMem :: forall e. SetReg -> Mem -> Eff (ma :: MemAccess | e) Regs
 ldRegFromFF00CMem setReg mem@{regs, mainMem} =
-  ldRegFromFF00PlusX regs.c setReg mem
+  ldRegFromFF00PlusX (c regs) setReg mem
 
 --LD R,(IOn)
-ldRegFromFF00ImmMem :: forall e. SetReg -> Mem -> Eff (ma :: MemAccess | e) Regs
-ldRegFromFF00ImmMem setReg mem@{regs, mainMem} = do
-  imm <- rd8 (regs.pc+1) mainMem
-  _ { pc = regs.pc + 2 } <$> ldRegFromFF00PlusX imm setReg mem
+ldRegFromFF00ImmMem :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
+ldRegFromFF00ImmMem mem@{regs, mainMem} = do
+  imm <- rd8 (pc regs + 1) mainMem
+  ldRegFromFF00PlusX imm setA mem
+  setPC (pc regs + 2) regs
 
 ldRegFromFF00PlusX :: forall e. I8 -> SetReg -> Mem -> Eff (ma :: MemAccess | e) Regs
 ldRegFromFF00PlusX  x setReg mem@{regs} = ldRegFromMem setReg addr mem
@@ -522,7 +535,7 @@ ldRegFromFF00PlusX  x setReg mem@{regs} = ldRegFromMem setReg addr mem
 --LD R,n
 ldRegFromImm :: forall e. SetReg -> Mem -> Eff (ma :: MemAccess | e) Regs
 ldRegFromImm setReg mem@{regs} =
-  _ { pc = regs.pc + 2 } <$> ldRegFromMem setReg (regs.pc+1) mem
+  setPC (pc regs + 2) =<< ldRegFromMem setReg ((pc regs)+1) mem
 
 --LD R,(RR)
 ldRegFromMem2R :: forall e. SetReg -> GetReg -> GetReg
@@ -533,8 +546,9 @@ ldRegFromMem2R setReg msByteReg lsByteReg mem@{regs} =
 --LD A,(nn)
 ldRegAFromMemImm :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 ldRegAFromMemImm mem@{ mainMem, regs } = do
-  addr <- rd16 (regs.pc+1) mainMem
-  _ { pc = regs.pc + 3 } <$> ldRegFromMem setA addr mem
+  addr <- rd16 ((pc regs)+1) mainMem
+  ldRegFromMem setA addr mem
+  setPC (pc regs + 3) regs
   
 
 --LDD A,(HL)
@@ -547,27 +561,25 @@ ldRegFromMemHLInc = ldRegFromMemHLIncDec incRegWithCarry
 
 ldRegFromMemHLIncDec :: forall e.
   -- Inc/Dec reg operation's type signature
-  (GetReg -> GetReg -> SetReg -> SetReg -> Regs -> Regs)
+  (GetReg -> GetReg -> SetReg -> SetReg -> Regs -> Eff (ma :: MemAccess | e) Regs)
   -> SetReg -> Mem -> Eff (ma :: MemAccess | e) Regs
 ldRegFromMemHLIncDec op setReg mem@{ regs }
-  = op h l setH setL
- <$> ldRegFromMem setA addr mem
- where
-  addr = joinRegs h l regs
+  = op h l setH setL =<< ldRegFromMem setA addr mem
+ where addr = joinRegs h l regs
 
 ldRegFromMem :: forall e. SetReg -> I16 -> Mem -> Eff (ma :: MemAccess | e) Regs
 ldRegFromMem setReg addr { mainMem, regs } =
-  (_ `setReg` regs) <$> rd8 addr mainMem
+  flip setReg regs =<< rd8 addr mainMem
 
 --LD HL,SP|n|
 ldHLFromSPImm :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 ldHLFromSPImm  mem@{ regs, mainMem } = do
-  immAbs <- absI8 <$> rd8 (regs.pc+1) mainMem
-  let sum = (immAbs + regs.sp) .&. 0xFFFF
+  immAbs <- absI8 <$> rd8 ((pc regs)+1) mainMem
+  let sum = (immAbs + (sp regs)) .&. 0xFFFF
       split = splitI16 sum
-      f' =  testHalfCarryFlag16 immAbs regs.sp sum
-        .|. testHalfCarryFlag8 immAbs regs.sp sum
-  return regs {h = split.ms, l = split.ls, pc = regs.pc + 2, f = f'}
+      f' =  testHalfCarryFlag16 immAbs (sp regs) sum
+        .|. testHalfCarryFlag8 immAbs (sp regs) sum
+  setH split.ms =<< setL split.ls =<< setPC ((pc regs) + 2) =<< setF f' regs
 
 --LDI (HL),A
 ldMemHLFromRegInc :: forall e. GetReg -> Mem -> Eff (ma :: MemAccess | e) Mem
@@ -578,28 +590,28 @@ ldMemHLFromRegDec :: forall e. GetReg -> Mem -> Eff (ma :: MemAccess | e) Mem
 ldMemHLFromRegDec  = ldMemHLFromRegIncDec decRegWithCarry
 
 ldMemHLFromRegIncDec :: forall e.
-     (GetReg -> GetReg -> SetReg -> SetReg -> Regs -> Regs)
+     (GetReg -> GetReg -> SetReg -> SetReg -> Regs -> Eff (ma :: MemAccess | e) Regs)
   -- Inc/Dec reg operation's type signature
   -> GetReg
   -> Mem -> Eff (ma :: MemAccess | e) Mem
 ldMemHLFromRegIncDec op getReg mem@{regs} = do
   mainMem' <- _.mainMem <$> ldMemFromReg addr a mem
-  return mem { mainMem = mainMem', regs = regs' }
- where
-  regs' = op h l setH setL regs
-  addr = joinRegs h l regs
+  op h l setH setL regs
+  return mem
+ where addr = joinRegs h l regs
 
 --LD (IOC),R
 ldFF00CMemFromReg :: forall e. GetReg -> Mem -> Eff (ma :: MemAccess | e) Mem
 ldFF00CMemFromReg getReg mem@{regs, mainMem} =
-  ldFF00PlusXFromReg  regs.c getReg mem
+  ldFF00PlusXFromReg  (c regs) getReg mem
 
---LD (IOn),R
-ldFF00ImmMemFromReg :: forall e. GetReg -> Mem -> Eff (ma :: MemAccess | e) Mem
-ldFF00ImmMemFromReg getReg mem@{regs, mainMem} = do
-  imm <- rd8 (regs.pc+1) mainMem
-  _ { regs = regs{pc = regs.pc + 2 } }
-    <$> ldFF00PlusXFromReg imm getReg mem
+--LD (IOn),A
+ldFF00ImmMemFromReg :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
+ldFF00ImmMemFromReg mem@{regs, mainMem} = do
+  imm <- rd8 ((pc regs)+1) mainMem
+  ldFF00PlusXFromReg imm a mem
+  setPC (pc regs + 2) regs
+  return mem
 
 ldFF00PlusXFromReg :: forall e. I8 -> GetReg -> Mem -> Eff (ma :: MemAccess | e) Mem
 ldFF00PlusXFromReg x getReg mem@{regs, mainMem} = mem'
@@ -610,15 +622,17 @@ ldFF00PlusXFromReg x getReg mem@{regs, mainMem} = mem'
 --LD (nn),A
 ldMemImmFromRegA :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
 ldMemImmFromRegA  mem@{ mainMem, regs } = do
-  addr <- rd16 (regs.pc+1) mainMem
-  _ { regs = regs{pc = regs.pc + 3} }
-    <$> ldMemFromReg addr a mem
+  addr <- rd16 ((pc regs)+1) mainMem
+  ldMemFromReg addr a mem
+  setPC (pc regs + 3) regs
+  return mem
 
 --LD (HL),n
 ldMemHLFromImm :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
 ldMemHLFromImm  mem@{mainMem,regs} = do
-  imm <- rd8 (regs.pc+1) mainMem
-  mem { mainMem = _, regs = regs{pc = regs.pc + 2} }
+  imm <- rd8 ((pc regs)+1) mainMem
+  setPC (pc regs + 2) regs
+  mem { mainMem = _ }
     <$> wr8 imm addr mainMem
  where
   addr = joinRegs h l regs
@@ -642,14 +656,14 @@ ldMemFromX addr x mem@{mainMem} =
 -- ========
 
 --CP A,R
-compAToReg :: GetReg -> Regs -> Regs
+compAToReg :: forall e. GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
 compAToReg getReg regs = compAToX (getReg regs) regs
 
 --CP A,(HL)
 compAToMemHL :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
-compAToMemHL { mainMem, regs } =
-  (\mhl -> compAToX mhl regs)
-    <$> rd8 (joinRegs h l regs) mainMem
+compAToMemHL { mainMem, regs } = do
+  mhl <- rd8 (joinRegs h l regs) mainMem
+  compAToX mhl regs
 
   {--hlMem <- rd8 (joinRegs h l regs) mainMem--}
   {--return $ compAToX hlMem regs--}
@@ -657,12 +671,13 @@ compAToMemHL { mainMem, regs } =
 --CP A,n
 compAToImm :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 compAToImm { mainMem, regs } = do
-  imm <- rd8 (regs.pc+1) mainMem
-  return (compAToX imm regs) { pc = regs.pc + 2 }
+  imm <- rd8 ((pc regs)+1) mainMem
+  compAToX imm regs
+  setPC (pc regs + 2) regs
 
-compAToX :: I8 -> Regs -> Regs
-compAToX x regs = regs { f = diff.flags }
- where diff = subI8s regs.a x
+compAToX :: forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
+compAToX x regs = setF diff.flags regs
+ where diff = subI8s (a regs) x
 
 -- Stack operations
 -- ================
@@ -677,20 +692,21 @@ compAToX x regs = regs { f = diff.flags }
 pushReg :: forall e. GetReg -> GetReg
         -> Mem -> Eff (ma :: MemAccess | e) Mem
 pushReg msByteReg lsByteReg mem@{regs,mainMem} = do
-  mainMem' <-  wr8 (lsByteReg regs) (regs.sp - 2)
-           <=< wr8 (msByteReg regs) (regs.sp - 1)
+  mainMem' <-  wr8 (lsByteReg regs) ((sp regs) - 2)
+           <=< wr8 (msByteReg regs) ((sp regs) - 1)
            $   mainMem
-  return mem { mainMem = mainMem', regs = regs { sp = regs.sp - 2 } }
+  setSP ((sp regs) - 2) regs
+  return mem { mainMem = mainMem' }
 
 --POP RR
 popReg :: forall e. SetReg -> SetReg
        -> Mem -> Eff (ma :: MemAccess | e) Regs
-popReg setMsByteReg setLsByteReg { mainMem, regs = regs@{sp} } = do
-  msByte <- rd8 (sp + 1) mainMem
-  lsByte <- rd8 sp mainMem
-  return <<< setMsByteReg msByte
-         <<< setLsByteReg lsByte
-          $  regs { sp = sp + 2 }
+popReg setMsByteReg setLsByteReg { mainMem, regs } = do
+  msByte <- rd8 (oldSP + 1) mainMem
+  lsByte <- rd8 oldSP mainMem
+  setSP (oldSP + 2) regs
+  setMsByteReg msByte =<< setLsByteReg lsByte regs
+ where oldSP = sp regs
 
 -- Jumps
 -- =====
@@ -701,19 +717,23 @@ popReg setMsByteReg setLsByteReg { mainMem, regs = regs@{sp} } = do
 -- JR C,n
 jumpRelImmFlag :: forall e. Boolean -> I8 -> Mem -> Eff (ma :: MemAccess | e) Regs
 jumpRelImmFlag inverse flag mem@{mainMem, regs} =
-  if inverse `xor` isSetFlag flag regs.f
-    then _ { brTkn = true } <$> (jumpRelImm mem)
-    else return regs { pc = regs.pc + 2, brTkn = false }
+  if inverse `xor` isSetFlag flag (f regs)
+    then do
+      jumpRelImm mem
+      setBrTkn true regs
+    else do
+      setBrTkn false regs
+      setPC ((pc regs) + 2) regs
 
 --JR n
 jumpRelImm :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 jumpRelImm { mainMem, regs } = do
-  imm <- rd8 (regs.pc+1) mainMem
+  imm <- rd8 ((pc regs)+1) mainMem
   let absImm = absI8 imm
       addOrSubImm = if absImm == imm
         then (_ + absImm) else (_ - absImm)
-      pc' = addOrSubImm $ regs.pc + 2
-  return regs { pc = pc' }
+      pc' = addOrSubImm $ (pc regs) + 2
+  setPC pc' regs
 
 -- JP NZ,nn
 -- JP Z,nn
@@ -721,18 +741,20 @@ jumpRelImm { mainMem, regs } = do
 -- JP C,nn
 jumpImmFlag :: forall e. Boolean -> I8 -> Mem -> Eff (ma :: MemAccess | e) Regs
 jumpImmFlag inverse flag mem@{mainMem,regs} =
-  if inverse `xor` isSetFlag flag regs.f
-    then _ { brTkn = true } <$> (jumpImm mem)
-    else return regs { pc = regs.pc + 3, brTkn = false }
+  if inverse `xor` isSetFlag flag (f regs)
+    then do
+      jumpImm mem
+      setBrTkn true regs
+    else setPC ((pc regs) + 3) =<< setBrTkn false regs
 
 -- JP nn
 jumpImm :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 jumpImm { mainMem, regs } =
-  regs { pc = _ } <$> rd16 (regs.pc+1) mainMem
+  flip setPC regs =<< rd16 ((pc regs)+1) mainMem
 
 -- JP (HL)
-jumpHL :: Regs -> Regs
-jumpHL regs = regs { pc = pc' }
+jumpHL :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
+jumpHL regs = setPC pc' regs
  where pc' = joinRegs h l regs
 
 -- Call Z,nn
@@ -741,16 +763,22 @@ jumpHL regs = regs { pc = pc' }
 -- Call NC,nn
 callImmFlag :: forall e. Boolean -> I8 -> Mem -> Eff (ma :: MemAccess | e) Mem
 callImmFlag inverse flag mem@{mainMem,regs} = 
-  if inverse `xor` isSetFlag flag regs.f
-    then adjRegs (_ { brTkn = true }) <$> (callImm mem)
-    else return mem { regs = regs {pc = regs.pc + 3, brTkn = false} }
+  if inverse `xor` isSetFlag flag (f regs)
+    then do
+      callImm mem
+      setBrTkn true regs
+      return mem
+    else do
+      setPC ((pc regs) + 3) =<< setBrTkn false regs
+      return mem
 
 -- Call nn
 callImm :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
 callImm mem@{mainMem,regs} = do
-  imm <- rd16 (regs.pc+1) mainMem
-  mainMem' <- wr16 (regs.pc + 3) (regs.sp-2) $ mainMem
-  return mem { mainMem =  mainMem', regs = regs { pc = imm, sp = regs.sp - 2 } }
+  imm <- rd16 ((pc regs)+1) mainMem
+  mainMem' <- wr16 ((pc regs) + 3) ((sp regs)-2) $ mainMem
+  setPC imm =<< setSP ((sp regs) - 2) regs
+  return mem { mainMem =  mainMem' }
 
 -- RET Z
 -- RET NZ
@@ -758,40 +786,43 @@ callImm mem@{mainMem,regs} = do
 -- RET NC
 retFlag :: forall e. Boolean -> I8 -> Mem -> Eff (ma :: MemAccess | e) Regs
 retFlag inverse flag mem@{mainMem,regs} = 
-  if inverse `xor` isSetFlag flag regs.f
-    then _ { brTkn = true } <$> (ret mem) 
-    else return regs { brTkn = false }
+  if inverse `xor` isSetFlag flag (f regs)
+    then do
+      ret mem
+      setBrTkn true regs
+    else setBrTkn false regs
 
 -- RETI
 --NOTE; not certain restoreRegs is necessary here
 retEnableInterrupt :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
 retEnableInterrupt mem@{ mainMem, regs, svdRegs } = do
-  pc' <- rd16 regs.sp mainMem
-  let regs' = regs { pc = pc', sp = regs.sp + 2 }
-  return mem { mainMem = mainMem', regs = regs' }
+  pc' <- rd16 (sp regs) mainMem
+  setPC pc' =<< setSP ((sp regs) + 2) regs
+  return mem { mainMem = mainMem' }
  where
   mainMem' = setIme true mainMem
 
 -- RET
 ret :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 ret { mainMem, regs } =
-  regs { pc = _, sp = regs.sp + 2 } <$> rd16 regs.sp mainMem
+  setSP ((sp regs) + 2) =<< flip setPC regs =<< rd16 (sp regs) mainMem
   
 --RST XX
 callRoutine :: forall e. Boolean -> I16 -> Mem -> Eff (ma :: MemAccess | e) Mem
-callRoutine fromIntrr addr { mainMem, regs, svdRegs } =
-  { mainMem : _, regs : regs', svdRegs : saveRegs regs svdRegs }
-    <$> wr16 retAddr (regs.sp - 2) mainMem
- where
-  regs' = regs { sp = regs.sp - 2, pc = addr }
-  retAddr = if fromIntrr then regs.pc else regs.pc + 1
+callRoutine fromIntrr addr mem@{mainMem, regs, svdRegs} = do
+  let svdRegs' = saveRegs regs svdRegs
+      retAddr = if fromIntrr then (pc regs) else (pc regs) + 1
+  setPC addr regs
+  setSP (sp regs - 2) regs
+  mem { mainMem = _, svdRegs = svdRegs' }
+    <$> wr16 retAddr (sp regs) mainMem
 
 -- Misc.
 -- =====
 
 --SWAP R
-swapReg :: SetReg -> GetReg -> Regs -> Regs
-swapReg setReg getReg regs = setReg reg' $ regs { f = f' }
+swapReg :: forall e. SetReg -> GetReg -> Regs -> Eff (ma :: MemAccess | e) Regs
+swapReg setReg getReg regs = setReg reg' =<< setF f' regs
  where
   f' = testZeroFlag reg'
   reg' = ((0x0F.&.reg) `shl` 4) .|. ((0xF0.&.reg) `zshr` 4)
@@ -809,40 +840,40 @@ swapMemHL mem@{mainMem, regs} = do
 --Why a command called 'clear' actually flips the tag
 --and not unset it, is a question that shouldn't be directed at me!
 --CCF
-clearCarryFlag :: Regs -> Regs
+clearCarryFlag :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
 clearCarryFlag = changeCarryFlag false
 
 --SCF
-setCarryFlag :: Regs -> Regs
+setCarryFlag :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
 setCarryFlag = changeCarryFlag true
 
-changeCarryFlag :: Boolean -> Regs -> Regs
-changeCarryFlag isSet regs = regs { f = f' }
+changeCarryFlag :: forall e. Boolean -> Regs -> Eff (ma :: MemAccess | e) Regs
+changeCarryFlag isSet regs = setF f' regs
  where f' =  unsetFlag subtractionFlag
          <<< unsetFlag halfCarryFlag
          <<< (if isSet then setFlag else flipFlag) carryFlag
-          $  regs.f
+          $  (f regs)
 
 --DAA
-adjAForBCDAdd :: Regs -> Regs
-adjAForBCDAdd regs = regs { f = f', a = 0xFF .&. a' }
+adjAForBCDAdd :: forall e. Regs -> Eff (ma :: MemAccess | e) Regs
+adjAForBCDAdd regs = setF f' =<< setA (0xFF .&. a') regs
  where
   f' = setFlagCond (0x100 .&. a' /= 0) carryFlag
      $ setZeroFlag (0xFF .&. a')
-     $ subtractionFlag .&. regs.f 
+     $ subtractionFlag .&. (f regs) 
 
-  a' = adj.highNyb <<< adj.lowNyb $ regs.a
-  adj = if regs.f .&. subtractionFlag /= 0
+  a' = adj.highNyb <<< adj.lowNyb $ (a regs)
+  adj = if (f regs) .&. subtractionFlag /= 0
     then
-      { lowNyb  : if (regs.f .&. halfCarryFlag /= 0)
+      { lowNyb  : if ((f regs) .&. halfCarryFlag /= 0)
                     then  (0xFF .&. _) <<< (_ - 6) else id
-      , highNyb : if (regs.f .&. carryFlag /= 0)
+      , highNyb : if ((f regs) .&. carryFlag /= 0)
                     then (_ - 0x60) else id
       }
     else
-      { lowNyb  : if (regs.f .&. halfCarryFlag /= 0) || (0x0F .&. regs.a > 9)
+      { lowNyb  : if ((f regs) .&. halfCarryFlag /= 0) || (0x0F .&. (a regs) > 9)
                     then (6 + _) else id
-      , highNyb : if (regs.f .&. carryFlag /= 0) || (regs.a > 0x9F)
+      , highNyb : if ((f regs) .&. carryFlag /= 0) || ((a regs) > 0x9F)
                     then (0x60 + _) else id
       }
 
@@ -880,27 +911,31 @@ setInterrupts enable mem@{ mainMem } =
 execExtOps :: forall e. Array (Z80State -> Eff (ma :: MemAccess | e) Z80State)
            -> Z80State -> Eff (ma :: MemAccess | e) Z80State
 execExtOps opsMap state = do
-  opCode <- rd8 (state.mem.regs.pc+1) state.mem.mainMem
+  opCode <- rd8 ((pc state.mem.regs)+1) state.mem.mainMem
   let extOp = getCpuOp opCode opsMap 
   state' <- extOp state
-  return state' { mem = state'.mem {
-           regs = state'.mem.regs {
-             pc = 65535 .&. (state'.mem.regs.pc + 2) } } }
+  setPC (65535 .&. ((pc state'.mem.regs) + 2)) state'.mem.regs
+  return state'
 
 -- Helpers
 -- =======
 
 saveRegs :: Regs -> SavedRegs -> SavedRegs
 saveRegs regs svdRegs =
-  svdRegs { a = regs.a, b = regs.b, c = regs.c, d = regs.d
-          , e = regs.e, f = regs.f, h = regs.h, l = regs.l
+  svdRegs { a = a regs, b = b regs, c = c regs, d = d regs
+          , e = e regs, f = f regs, h = h regs, l = l regs
           }
 
-restoreRegs :: SavedRegs -> Regs -> Regs
-restoreRegs svdRegs regs =
-  regs { a = svdRegs.a, b = svdRegs.b, c = svdRegs.c, d = svdRegs.d
-       , e = svdRegs.e, f = svdRegs.f, h = svdRegs.h, l = svdRegs.l
-       }
+restoreRegs :: forall e. SavedRegs -> Regs -> Eff (ma :: MemAccess | e) Regs
+restoreRegs svdRegs regs = do
+  setA svdRegs.a regs
+  setB svdRegs.b regs
+  setC svdRegs.c regs
+  setD svdRegs.d regs
+  setE svdRegs.e regs
+  setF svdRegs.f regs
+  setH svdRegs.h regs
+  setL svdRegs.l regs
 
 joinRegs :: GetReg -> GetReg -> Regs -> I16
 joinRegs msByteReg lsByteReg regs = (msByteReg regs `shl` 8) + lsByteReg regs
@@ -916,8 +951,8 @@ splitI16 x = { ms : (x `zshr` 8) .&. 255
              , ls : x .&. 255
              }
 
-adjFlag :: I8 -> Regs -> Regs
-adjFlag flag regs = regs { f = setFlag flag regs.f }
+adjFlag :: forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
+adjFlag flag regs = setF (setFlag flag (f regs)) regs
 
 isSetFlag :: I8 -> I8 -> Boolean
 isSetFlag f fs = f .&. fs /= 0

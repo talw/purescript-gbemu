@@ -32,6 +32,33 @@ foreign import innerSetL     :: forall e. I8 ->  RegsObj -> Eff (ma :: MemAccess
 foreign import innerSetF     :: forall e. I8 ->  RegsObj -> Eff (ma :: MemAccess | e) RegsObj
 foreign import innerSetBrTkn :: forall e. Boolean ->  RegsObj -> Eff (ma :: MemAccess | e) RegsObj
 
+cleanRegs :: Regs
+cleanRegs = Regs
+  { pc    : 0x0101
+  , sp    : 0xFFFE
+  , a     : 0x01
+  , b     : 0
+  , c     : 0x13
+  , d     : 0
+  , e     : 0xD8
+  , h     : 0x01
+  , l     : 0x4D
+  , f     : 0xB0
+  , brTkn : false
+  }
+
+cleanSavedRegs :: SavedRegs
+cleanSavedRegs =
+  { a  : 0
+  , b  : 0
+  , c  : 0
+  , d  : 0
+  , e  : 0
+  , h  : 0
+  , l  : 0
+  , f  : 0
+  }
+
 --NOTE are these wrappers necessary? Or can you pass Regs straight in to the js functions?
 pc :: forall e. Regs -> {-Eff (ra :: RegsAccess | e)-} I16
 pc (Regs rs) = rs.pc
