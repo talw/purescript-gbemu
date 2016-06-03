@@ -16,6 +16,7 @@ import Control.Monad.Eff
 import Control.Monad.Eff.Console
 import Data.Function
 import Data.Int
+import Data.List as L
 import Data.Int.Bits
 import Data.Foldable
 import Data.Functor
@@ -131,10 +132,10 @@ hblCurrLineEarlyReset gpu@{mTimer = mTimer', currLine, mode} =
 renderLine :: forall e. Gpu -> Eff (ma :: MemAccess, canvas :: Canvas | e) Gpu
 renderLine gpu = do
   tileIx <- getTileIx gpu tileIxAddr
-  foldRes <- A.foldM updateCanvas
+  foldRes <- L.foldM updateCanvas
                      { tho:tileHorizOff
                      , mho:memHorizOff, tix:tileIx }
-                     (0 A... (pixWidth-1))
+                     (0 L... (pixWidth-1))
   return gpu
  where
   tileIxAddr = bgMapOff + memVertOff + memHorizOff
