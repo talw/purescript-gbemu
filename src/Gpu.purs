@@ -30,14 +30,11 @@ import MemSection as M
 import Debug
 
 
-foreign import setCanvasPixelColor :: forall e. Int -> Int -> Int -> Int -> Int -> Int
+foreign import setCanvasPixelColor :: forall e. Int -> Palette -> Int -> Int
                               -> Eff (canvas :: Canvas | e) Unit
 
 foreign import setScreen :: forall e. Context2D
                          -> Eff (canvas :: Canvas | e) Unit
-
-{--foreign import setScreenArr :: forall e. Array I8 -> Context2D--}
-                         {---> Eff (canvas :: Canvas | e) Unit--}
 
 modeDuration :: GpuMode -> Int
 modeDuration = case _ of
@@ -53,8 +50,7 @@ getCanvas = do
 
 --NOTE: could be redundant after scrBuf is gone
 resetScreen :: forall e. Eff (canvas :: Canvas | e) Unit
-resetScreen = return unit -- setScreenArr arr =<< getCanvas
- {--where arr = A.replicate (160*144*4) 255--}
+resetScreen = return unit
 
 cleanGpu :: Gpu
 cleanGpu =
@@ -156,7 +152,7 @@ renderLine gpu = do
   --tile width is 8 pixels / 3 bits wide
   tileHorizOff = 7 .&. gpu.xScroll
 
-  scpc = mkFn6 setCanvasPixelColor
+  setCanvasPixelColor' = mkFn4 setCanvasPixelColor
 
   updateCanvas {tho,mho,tix} i = do
     --Would've rewritten with a single 'if', if PureScript had supported
@@ -173,15 +169,8 @@ renderLine gpu = do
 
     --NOTE trace error, if invalid color ix
     colorIx <- getTilePixel tho tileVertOff tix gpu.tiles 
-    {--let color = getFromSeq cleanColor colorIx gpu.palette--}
 
-    let cix4 = colorIx*4
-    {--color <- getColor colorIx gpu.palette--}
-    a <- pal M.!! cix4
-    r <- pal M.!! cix4+1
-    g <- pal M.!! cix4+2
-    b <- pal M.!! cix4+3
-    runFn6 scpc a r g b (i*4) gpu.currLine
+    runFn4 setCanvasPixelColor' colorIx pal (i*4) gpu.currLine
     return $ {tho:tho',mho:mho',tix:tix'}
    where
     lastTileRowPixel = tho == 7
