@@ -73,7 +73,7 @@ type Color =
 
 newtype Tiles = Tiles MemSection
 
-newtype Palette = Palette MemSection
+type Palette = MemSection
 
 data Channel = Alpha
              | Red

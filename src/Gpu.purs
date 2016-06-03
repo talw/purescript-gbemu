@@ -69,7 +69,7 @@ cleanGpu =
   , yScroll : 0
   , xScroll : 0
   , vblIntrr : false
-  , palette : Palette $ M.getNew 16 0
+  , palette : M.getNew 16 0
   , mode : VBlank
   , tiles : Tiles $ M.getNew (384*64) 0
   , regs : M.getNew 0x40 0
@@ -176,11 +176,17 @@ renderLine gpu = do
     colorIx <- getTilePixel tho tileVertOff tix gpu.tiles 
     {--let color = getFromSeq cleanColor colorIx gpu.palette--}
 
-    color <- getColor colorIx gpu.palette
-    runFn6 scpc color.a color.r color.g color.b (i*4) gpu.currLine
+    let cix4 = colorIx*4
+    {--color <- getColor colorIx gpu.palette--}
+    a <- pal M.!! cix4
+    r <- pal M.!! cix4+1
+    g <- pal M.!! cix4+2
+    b <- pal M.!! cix4+3
+    runFn6 scpc a r g b (i*4) gpu.currLine
     return $ {tho:tho',mho:mho',tix:tix'}
    where
     lastTileRowPixel = tho == 7
+    pal = gpu.palette
 
 
 
@@ -220,23 +226,25 @@ gpuWr8 i8 addr gpu = do
     3 -> setColor {a:0  ,r:0  ,g:0  ,b:255} i gpu.palette
     otherwise -> return unit -- NOTE log this
 
-getColor :: forall e. Int -> Palette
-         -> Eff (ma :: MemAccess | e) {a :: Int, r :: Int, g :: Int, b :: Int}
-getColor cIx (Palette pal) = do
-  a <- pal M.!! (cIx*4 + 0)
-  r <- pal M.!! (cIx*4 + 1)
-  g <- pal M.!! (cIx*4 + 2)
-  b <- pal M.!! (cIx*4 + 3)
-  return {a,r,g,b}
+{--getColor :: forall e. Int -> Palette--}
+         {---> Eff (ma :: MemAccess | e) {a :: Int, r :: Int, g :: Int, b :: Int}--}
+{--getColor cIx pal = do--}
+  {--a <- M.zubi pal i--}
+  {--r <- M.zubi pal (i + 1)--}
+  {--g <- M.zubi pal (i + 2)--}
+  {--b <- M.zubi pal (i + 3)--}
+  {--return {a,r,g,b}--}
+ {--where i = cIx*4--}
 
 setColor :: forall e. {a :: Int, r :: Int, g :: Int, b :: Int} -> Int -> Palette
          -> Eff (ma :: MemAccess | e) Unit
-setColor {a,r,g,b} cIx (Palette pal) = do
-  M.replace a (cIx*4 + 0) pal
-  M.replace r (cIx*4 + 1) pal
-  M.replace g (cIx*4 + 2) pal
-  M.replace b (cIx*4 + 3) pal
+setColor {a,r,g,b} cIx pal = do
+  M.replace a i pal
+  M.replace r (i + 1) pal
+  M.replace g (i + 2) pal
+  M.replace b (i + 3) pal
   return unit
+ where i = cIx*4
 
 getCtrlFlags :: Gpu -> I8
 getCtrlFlags gpu =  cf gpu.bgOn   0x01
