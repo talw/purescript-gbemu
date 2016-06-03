@@ -210,9 +210,9 @@ gpuWr8 i8 addr gpu = do
   --NOTE should this be reversed?
   stPl i = case (i8 `zshr` (i*2)) .&. 3 of
     0 -> setColor {a:255,r:255,g:255,b:255} i gpu.palette
-    1 -> setColor {a:192,r:192,g:192,b:255} i gpu.palette
-    2 -> setColor {a:96 ,r:96 ,g:96 ,b:255} i gpu.palette
-    3 -> setColor {a:0  ,r:0  ,g:0  ,b:255} i gpu.palette
+    1 -> setColor {a:255,r:192,g:192,b:192} i gpu.palette
+    2 -> setColor {a:255,r:96 ,g:96 ,b:96} i gpu.palette
+    3 -> setColor {a:255,r:0  ,g:0  ,b:0} i gpu.palette
     otherwise -> return unit -- NOTE log this
 
 {--getColor :: forall e. Int -> Palette--}
