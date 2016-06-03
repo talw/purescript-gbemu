@@ -27,16 +27,14 @@ exports.setIme=function(val) {
   }
 }
 
-//exports.setIntE=function(val, mm) {
-  //return function(val) {
-    //return function(mm) {
-      //return function() {
-        //mm.intE = val;
-        //return mm;
-      //}
-    //}
-  //}
-//}
+exports.setIntE= function(val) {
+  return function(mm) {
+    return function() {
+      mm.intE = val;
+      return mm;
+    }
+  }
+}
 
 exports.setIntF=function(val) {
   return function(mm) {

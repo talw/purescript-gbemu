@@ -7,10 +7,12 @@ import Data.Maybe
 import Data.Int.Bits
 import Data.Array as A
 import Data.Tuple as T
+import Data.List as L
 import Data.Foldable
 import Control.Monad.Eff
 import Control.Bind
 import Data.Functor
+import Data.Traversable
 
 import Gpu
 import Types
@@ -32,7 +34,7 @@ foreign import setIme :: forall e. Boolean -> MainMem -> Eff (ma :: MemAccess | 
 foreign import setImeCntDwn :: forall e. MainMem -> Eff (ma :: MemAccess | e) MainMem
 foreign import setGpu :: forall e. Gpu -> MainMem -> Eff (ma :: MemAccess | e) MainMem
 foreign import setIntF :: forall e. I8 -> MainMem -> Eff (ma :: MemAccess | e) MainMem
-{--foreign import setIntE :: forall e. I8 -> MainMem -> Eff (ma :: MemAccess | e) MainMem--}
+foreign import setIntE :: forall e. I8 -> MainMem -> Eff (ma :: MemAccess | e) MainMem
 
 setRom :: Array I8 -> MainMem -> MainMem
 setRom rom (MainMem mem) = MainMem $ mem { rom = M.fromIntArray rom }
@@ -86,7 +88,7 @@ rd16 addr mem = do
 --The initial writing to them should be ST array computations,
 --and not wr8 calls
 wr8 :: forall e. I8 -> I16 -> MainMem -> Eff (ma :: MemAccess | e) MainMem
-wr8 i8 addr (MainMem mem@{biosMapped,bios,rom,eram,wram,zram,gpu=gpu@{oam}}) =
+wr8 i8 addr outerMM@(MainMem mem@{biosMapped,bios,rom,eram,wram,zram,gpu=gpu@{oam}}) =
   MainMem <$> eModifyMem
  where
   eModifyMem =
@@ -110,14 +112,14 @@ wr8 i8 addr (MainMem mem@{biosMapped,bios,rom,eram,wram,zram,gpu=gpu@{oam}}) =
           0x0F00 ->
             case 0x00F0.&.addr of
               0x0000 -> if addr == 0xFF0F
-                then return mem { intF = i8 }
+                then mem <$ setIntF i8 outerMM --return mem { intF = i8 }
                 else return mem
               n | 0x0040 <= n && n <= 0x0070 -> do
                 gpu' <- gpuWr8 i8 addr gpu 
-                return mem { gpu = gpu' }
+                mem <$ setGpu gpu' outerMM --return mem { gpu = gpu' }
               n | n >= 0x0080 -> if addr /= 0xFFFF
                 then mem <$ M.replace i8 (0x7F .&. addr) zram
-                else return mem { intE = i8 }
+                else mem <$ setIntE i8 outerMM  --return mem { intE = i8 }
               otherwise -> return mem --NOTE log this
           otherwise -> return mem --NOTE log this
       otherwise -> return mem --NOTE log this
@@ -158,6 +160,7 @@ cleanMainMem =
     0xF8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
   ]
   initIOArea mm = A.foldM (\acc (T.Tuple addr b) -> wr8 b addr acc) mm ioMem
+  {--initIOArea mm = mm <$ traverse (\(T.Tuple addr b) -> wr8 b addr mm) ioMem--}
 
 getGpu :: MainMem -> Gpu
 getGpu (MainMem mm) = mm.gpu
@@ -177,8 +180,8 @@ getIme (MainMem mm) = mm.ime
 getImeEnableCnt :: MainMem -> Int
 getImeEnableCnt (MainMem mm) = mm.imeEnableCnt
 
-setIntE :: I8 -> MainMem -> MainMem
-setIntE val (MainMem mm) = MainMem $ mm { intE = val }
+{--setIntE :: I8 -> MainMem -> MainMem--}
+{--setIntE val (MainMem mm) = MainMem $ mm { intE = val }--}
 
 {--setIntF :: I8 -> MainMem -> MainMem--}
 {--setIntF val (MainMem mm) = MainMem $ mm { intF = val }--}
