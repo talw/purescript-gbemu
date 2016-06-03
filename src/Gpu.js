@@ -6,11 +6,21 @@ var ctx = document.getElementById("screen").getContext('2d');
 var imgData = ctx.createImageData(160,144);
 var imgDataArr = imgData.data;
 
-exports.setCanvasPixelColor=function(val) {
-  return function(x) {
-    return function(y) {
-      return function() {
-        imgDataArr[y*160*4 + x] = val;
+exports.setCanvasPixelColor=function(a) {
+  return function(r) {
+    return function(g) {
+      return function(b) {
+        return function(x) {
+          return function(y) {
+            return function() {
+              var i = y*160*4 + x;
+              imgDataArr[i] = a;
+              imgDataArr[i+1] = r;
+              imgDataArr[i+2] = g;
+              imgDataArr[i+3] = b;
+            }
+          }
+        }
       }
     }
   }

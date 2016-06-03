@@ -14,6 +14,7 @@ import Control.Bind
 import Control.Monad
 import Control.Monad.Eff
 import Control.Monad.Eff.Console
+import Data.Function
 import Data.Int
 import Data.Int.Bits
 import Data.Foldable
@@ -29,7 +30,7 @@ import MemSection as M
 import Debug
 
 
-foreign import setCanvasPixelColor :: forall e. Int -> Int -> Int
+foreign import setCanvasPixelColor :: forall e. Int -> Int -> Int -> Int -> Int -> Int
                               -> Eff (canvas :: Canvas | e) Unit
 
 foreign import setScreen :: forall e. Context2D
@@ -156,6 +157,8 @@ renderLine gpu = do
   --tile width is 8 pixels / 3 bits wide
   tileHorizOff = 7 .&. gpu.xScroll
 
+  scpc = mkFn6 setCanvasPixelColor
+
   updateCanvas {tho,mho,tix} i = do
     --Would've rewritten with a single 'if', if PureScript had supported
     --pattern matching in where clause
@@ -174,10 +177,7 @@ renderLine gpu = do
     {--let color = getFromSeq cleanColor colorIx gpu.palette--}
 
     color <- getColor colorIx gpu.palette
-    setCanvasPixelColor color.a (i*4)   gpu.currLine
-    setCanvasPixelColor color.r (i*4+1) gpu.currLine
-    setCanvasPixelColor color.g (i*4+2) gpu.currLine
-    setCanvasPixelColor color.b (i*4+3) gpu.currLine
+    runFn6 scpc color.a color.r color.g color.b (i*4) gpu.currLine
     return $ {tho:tho',mho:mho',tix:tix'}
    where
     lastTileRowPixel = tho == 7
