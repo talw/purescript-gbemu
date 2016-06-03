@@ -4,6 +4,9 @@ import Prelude
 import Data.Sequence
 import Data.Array
 
+import Utils
+import Data.Int.Bits
+
 type Z80State =
   { mem :: Mem
   , totalM :: I8
@@ -18,10 +21,10 @@ type Mem =
   }
 
 adjMainMem :: (MainMem -> MainMem) -> Mem -> Mem
-adjMainMem f m = m { mainMem = f m.mainMem }
+adjMainMem func m = m { mainMem = func m.mainMem }
 
 adjRegs :: (Regs -> Regs) -> Mem -> Mem
-adjRegs f m = m { regs = f m.regs }
+adjRegs func m = m { regs = func m.regs }
 
 --NOTE: consider turning into a typeclass so that you can hide the
 --underlying type that is used
@@ -142,3 +145,23 @@ setF x = _ { f = x }
 --at the cost of verbosity. Consider doing the change
 type I8 = Int
 type I16 = Int
+
+--Debug functions
+
+regsStr :: Regs -> String
+regsStr regs = "af: "    ++ af
+          ++ "\nbc: "    ++ bc
+          ++ "\nde: "    ++ de
+          ++ "\nhl: "    ++ hl
+          ++ "\nsp: "    ++ sp
+          ++ "\npc: "    ++ pc
+          ++ "\nbrTkn: " ++ show regs.brTkn
+ where
+  af = toHexStr 4 $ joinRegs a f regs
+  bc = toHexStr 4 $ joinRegs b c regs
+  de = toHexStr 4 $ joinRegs d e regs
+  hl = toHexStr 4 $ joinRegs h l regs
+  sp = toHexStr 4 $ regs.sp
+  pc = toHexStr 4 $ regs.pc
+  joinRegs msByteReg lsByteReg regs = (msByteReg regs `shl` 8) + lsByteReg regs
+

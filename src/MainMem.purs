@@ -27,6 +27,13 @@ import Debug
 
 -- 8 Bit version
 
+foreign import setVblIntrr :: forall e. Boolean -> MainMem -> Eff (ma :: MemAccess | e) MainMem
+foreign import setIme :: forall e. Boolean -> MainMem -> Eff (ma :: MemAccess | e) MainMem
+foreign import setImeCntDwn :: forall e. MainMem -> Eff (ma :: MemAccess | e) MainMem
+foreign import setGpu :: forall e. Gpu -> MainMem -> Eff (ma :: MemAccess | e) MainMem
+foreign import setIntF :: forall e. I8 -> MainMem -> Eff (ma :: MemAccess | e) MainMem
+{--foreign import setIntE :: forall e. I8 -> MainMem -> Eff (ma :: MemAccess | e) MainMem--}
+
 setRom :: Array I8 -> MainMem -> MainMem
 setRom rom (MainMem mem) = MainMem $ mem { rom = M.fromIntArray rom }
 
@@ -155,8 +162,8 @@ cleanMainMem =
 getGpu :: MainMem -> Gpu
 getGpu (MainMem mm) = mm.gpu
 
-setGpu :: Gpu -> MainMem -> MainMem
-setGpu gpu' (MainMem mm) = MainMem $ mm { gpu = gpu' }
+{--setGpu :: Gpu -> MainMem -> MainMem--}
+{--setGpu gpu' (MainMem mm) = MainMem $ mm { gpu = gpu' }--}
 
 getIntE :: MainMem -> I8
 getIntE (MainMem mm) = mm.intE
@@ -173,16 +180,16 @@ getImeEnableCnt (MainMem mm) = mm.imeEnableCnt
 setIntE :: I8 -> MainMem -> MainMem
 setIntE val (MainMem mm) = MainMem $ mm { intE = val }
 
-setIntF :: I8 -> MainMem -> MainMem
-setIntF val (MainMem mm) = MainMem $ mm { intF = val }
+{--setIntF :: I8 -> MainMem -> MainMem--}
+{--setIntF val (MainMem mm) = MainMem $ mm { intF = val }--}
 
-setIme :: Boolean -> MainMem -> MainMem
-setIme val (MainMem mm) = MainMem $ mm { ime = val }
+{--setIme :: Boolean -> MainMem -> MainMem--}
+{--setIme val (MainMem mm) = MainMem $ mm { ime = val }--}
 
 --NOTE: imeEnableCnt should be 2 according to specs,
 --but according to simulations I've run it looks like it's 3
-imeCntDwn :: MainMem -> MainMem
-imeCntDwn (MainMem mm@{ imeEnableCnt }) = MainMem $ mm { imeEnableCnt = 3 }
+{--imeCntDwn :: MainMem -> MainMem--}
+{--imeCntDwn (MainMem mm@{ imeEnableCnt }) = MainMem $ mm { imeEnableCnt = 3 }--}
 
 updImeCnt :: MainMem -> MainMem
 updImeCnt (MainMem mm@{ imeEnableCnt,ime }) = MainMem $

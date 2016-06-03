@@ -108,16 +108,20 @@ handleGpu opTiming st = do
                                 (trace ("vbl-totalM: " ++ show st.totalM) \_ -> (0x01 .|. _))
                                 else id)
                 $ getIntF st.mem.mainMem
-  return $ st { mem = st.mem { mainMem =
-        setIntF intF'
-    <<< setGpu (gpu' { vblIntrr = false })
-     $  st.mem.mainMem } }
+
+  setGpu gpu' st.mem.mainMem
+  setVblIntrr false st.mem.mainMem 
+  setIntF intF' st.mem.mainMem
+  return st
 
 interruptOp :: forall e. Z80State -> Eff (ma :: MemAccess | e) Z80State
-interruptOp st = snd res $
-  st { mem = st.mem {
-    mainMem = setIme false
-           <<< setIntF (fst res $ getIntF st.mem.mainMem) $ st.mem.mainMem } }
+interruptOp st = do
+  setIntF (fst res $ getIntF st.mem.mainMem) st.mem.mainMem 
+  setIme false st.mem.mainMem
+  snd res st
+--    st { mem = st.mem {
+ --     mainMem = setIme2 false
+  --           =<< setIntF (fst res $ getIntF st.mem.mainMem) $ st.mem.mainMem } }
  where
   res :: Tuple (Int -> Int) (Z80State -> Eff (ma :: MemAccess | e) Z80State)
   res = fromMaybe (Tuple id return) mRes
@@ -233,20 +237,4 @@ shldTrc :: Z80State -> Boolean
 {--shldTrc state = state.totalM == 233644--}
 shldTrc state = false
 {--shldTrc state = state.mem.regs.pc == 0x0405 || state.mem.regs.pc == 0x0371--}
-
-regsStr :: Regs -> String
-regsStr regs = "af: "    ++ af
-          ++ "\nbc: "    ++ bc
-          ++ "\nde: "    ++ de
-          ++ "\nhl: "    ++ hl
-          ++ "\nsp: "    ++ sp
-          ++ "\npc: "    ++ pc
-          ++ "\nbrTkn: " ++ show regs.brTkn
- where
-  af = toHexStr 4 $ joinRegs a f regs
-  bc = toHexStr 4 $ joinRegs b c regs
-  de = toHexStr 4 $ joinRegs d e regs
-  hl = toHexStr 4 $ joinRegs h l regs
-  sp = toHexStr 4 $ regs.sp
-  pc = toHexStr 4 $ regs.pc
 

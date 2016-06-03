@@ -80,7 +80,6 @@ cleanGpu =
 cleanColor :: Color
 cleanColor = {a:0,r:0,g:0,b:0}
 
---NOTE consider doing nothing if dispOn is false
 gpuStep :: forall e. I8 -> Gpu -> Eff (canvas :: Canvas, ma :: MemAccess | e) Gpu
 gpuStep _ gpu@{dispOn = false} = return gpu
 

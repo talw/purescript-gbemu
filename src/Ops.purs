@@ -768,9 +768,8 @@ retEnableInterrupt :: forall e. Mem -> Eff (ma :: MemAccess | e) Mem
 retEnableInterrupt mem@{ mainMem, regs, svdRegs } = do
   pc' <- rd16 regs.sp mainMem
   let regs' = regs { pc = pc', sp = regs.sp + 2 }
+  mainMem' <- setIme true mainMem
   return mem { mainMem = mainMem', regs = regs' }
- where
-  mainMem' = setIme true mainMem
 
 -- RET
 ret :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
@@ -869,12 +868,12 @@ halt state =
 --DI
 --EI
  --NOTE a hack, until I understand the intricacies of EI
-setInterrupts :: forall e. Boolean -> Mem -> Mem
-setInterrupts enable mem@{ mainMem } =
-  mem { mainMem = mainMem' }
- where mainMem' = if enable
-                    then imeCntDwn mainMem
-                    else setIme false mainMem
+setInterrupts :: forall e. Boolean -> Mem -> Eff (ma :: MemAccess | e) Mem
+setInterrupts enable mem@{ mainMem } = do
+  if enable
+    then setImeCntDwn mainMem
+    else setIme false mainMem
+  return mem
 
 --Extended Ops
 execExtOps :: forall e. Array (Z80State -> Eff (ma :: MemAccess | e) Z80State)

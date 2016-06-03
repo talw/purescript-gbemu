@@ -7,6 +7,8 @@ import Types
 import Ops
 import Utils
 
+import Debug
+
 
 --Tried to use typeclasses, but was forced to turn all my type synonyms
 --to 'newtypes' which will require writing a specialised function for each
@@ -431,7 +433,7 @@ basicOps =
   , mre2op $ ldRegFromFF00ImmMem setA        -- LDH A,(n)
   , mre2op $ popReg setA setF                -- POP AF
   , mre2op $ ldRegFromFF00CMem setA          -- LD A,(IOC)
-  , mm2op $ setInterrupts false              -- DI
+  , mme2op $ setInterrupts false              -- DI
 
   , ss2op $ invalidOpCode
   , mme2op $ pushReg a f                     -- PUSH AF
@@ -441,7 +443,7 @@ basicOps =
   , mre2op ldHLFromSPImm                     -- LDHL SP,d
   , rr2op ldSPFromHL                         -- LD SP,HL
   , mre2op ldRegAFromMemImm                  -- LD A,(nn)
-  , mm2op $ setInterrupts true               -- EI
+  , mme2op $ setInterrupts true               -- EI
 
   , ss2op $ invalidOpCode
   , ss2op $ invalidOpCode
