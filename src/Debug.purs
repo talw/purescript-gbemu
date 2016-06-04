@@ -7,8 +7,8 @@ module Debug
   , condTr
   , ramStr
   , memStrRange
-  , timeIt
-  , Timer
+  {--, timeIt--}
+  {--, Timer--}
   ) where
 
 import Prelude
@@ -29,18 +29,18 @@ import Utils
 -- Timer
 -- =====
 
-foreign import data Timer :: !
+{--foreign import data Timer :: !--}
 
-foreign import startTimer :: forall e. Eff (timer :: Timer | e) Unit
-foreign import endTimer :: forall e. Eff (timer :: Timer | e) Int
-foreign import recordTime :: forall e. Int -> Int -> Int -> Eff (timer :: Timer | e) Unit
+{--foreign import startTimer :: forall e. Eff (timer :: Timer | e) Unit--}
+{--foreign import endTimer :: forall e. Eff (timer :: Timer | e) Int--}
+{--foreign import recordTime :: forall e. Int -> Int -> Int -> Eff (timer :: Timer | e) Unit--}
 
-timeIt :: forall e a. Int -> (Unit -> Eff (timer :: Timer | e) a) -> Eff (timer :: Timer | e) a
-timeIt timerIx f = do
-  startTimer
-  res <- f unit
-  recordTime timerIx 1 =<< endTimer
-  return res
+{--timeIt :: forall e a. Int -> (Unit -> Eff (timer :: Timer | e) a) -> Eff (timer :: Timer | e) a--}
+{--timeIt timerIx f = do--}
+  {--startTimer--}
+  {--res <- f unit--}
+  {--recordTime timerIx 1 =<< endTimer--}
+  {--return res--}
 
 -- Trace functions
 -- ===============

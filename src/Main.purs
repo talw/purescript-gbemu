@@ -13,6 +13,7 @@ import Network.HTTP.Affjax.Response
 import Network.HTTP.RequestHeader
 import Data.MediaType
 import Data.DataView
+import DOM.Timer
 
 import Loader
 import Core
@@ -30,7 +31,7 @@ main = launchAff $ do
   initialState <- liftEff $ reset rom
   afLog "reset finished"
 
-  liftEff $ drive 634000 initialState
+  liftEff $ drive 2634000 initialState
   
   afLog "stopped."
  where
@@ -40,10 +41,15 @@ drive :: forall e. Int -> Z80State
       -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: Timer | e) Z80State
 drive interval state = do
   {--isPause <- readFromEnvSomething--}
-  state' <- run interval state
-  if true 
+  state' <- run frameDur state
+  if state'.totalM > interval
     then return state
-    else drive interval state'
+    else do
+      timeout 1 $ drive interval state'
+      return state
+
+frameDur :: Int
+frameDur = 17556
 
 afLog :: forall e. String -> Aff (console :: CONSOLE | e) Unit
 afLog x = liftEff $ log x
