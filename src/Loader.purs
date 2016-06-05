@@ -1,24 +1,19 @@
 module Loader where
 
-import Prelude
-import Control.Monad.Eff
-import Control.Monad.Eff.Console
-import Data.Array
-import Data.Either
+import Prelude (return, ($), bind)
+import Control.Monad.Eff.Console (CONSOLE)
 import Data.ArrayBuffer.Types as A
-import Control.Monad.Aff
-import Control.Monad.Eff.Class
-import Control.Monad.Eff.Exception
-import Network.HTTP.Affjax
-import Network.HTTP.Affjax.Response
-import Network.HTTP.RequestHeader
-import Data.MediaType
-import Data.DataView
+import Control.Monad.Aff (Aff)
+import Network.HTTP.Affjax (AJAX, defaultRequest, affjax)
+import Network.HTTP.RequestHeader (RequestHeader(ContentType))
+import Data.MediaType (MediaType(MediaType))
 
-import Types
+import Types (I8)
+
 
 foreign import fromArrayBuffer :: A.ArrayBuffer -> Array I8
 
+--An ajax call to download a rom into an ArrayBuffer..
 loadRom :: forall e. Aff (console :: CONSOLE, ajax :: AJAX | e)
            (Array I8)
 loadRom = do
@@ -28,14 +23,3 @@ loadRom = do
     }
   let rom = fromArrayBuffer res.response
   return rom
-
-{--loadRom :: forall e.--}
-  {--Eff (console :: CONSOLE, ajax :: AJAX, err :: EXCEPTION | e) Unit--}
-{--loadRom = launchAff $ do--}
-  {--res <- affjax $ defaultRequest--}
-    {--{ url = "/rom/rom.gb"--}
-    {--, headers = [ContentType $ MediaType "ArrayBuffer"] --}
-    {--}--}
-  {--let x = fromArrayBuffer res.response--}
-  {--liftEff $ log $ "GET /api response: "  ++ show x--}
-  {--return x--}

@@ -1,27 +1,16 @@
 module Main where
 
-import Prelude
-import Control.Monad.Eff
-import Control.Monad.Eff.Console
-import Data.Array
-import Data.Either
-import Control.Monad.Aff
-import Control.Monad.Eff.Class
-import Control.Monad.Eff.Exception
-import Network.HTTP.Affjax
-import Network.HTTP.Affjax.Response
-import Network.HTTP.RequestHeader
-import Data.MediaType
-import Data.DataView
-import DOM.Timer
+import Prelude (Unit, ($), return, bind, (>))
+import Control.Monad.Eff (Eff)
+import Control.Monad.Eff.Console (CONSOLE, log)
+import Control.Monad.Aff (Aff, launchAff)
+import Control.Monad.Eff.Class (liftEff)
+import DOM.Timer (Timer, timeout)
 
-import Loader
-import Core
-import Gpu
-import Types
-import Utils
-import Debug
-import MemSection as M
+import Loader (loadRom)
+import Core (run, reset)
+import Gpu (Canvas)
+import Types (Z80State, MemAccess)
 
 --NOTE type a type signature once you reach a stable stage
 main = launchAff $ do
@@ -31,11 +20,10 @@ main = launchAff $ do
   initialState <- liftEff $ reset rom
   afLog "reset finished"
 
+  --Run the emulator just enough to get to the title screen of Tetris.
   liftEff $ drive 2634000 initialState
   
   afLog "stopped."
- where
-  frameDur = 17556
 
 drive :: forall e. Int -> Z80State
       -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: Timer | e) Z80State
@@ -45,6 +33,11 @@ drive interval state = do
   if state'.totalM > interval
     then return state
     else do
+      --Between consecutive drive calls, which drive the emulator a frame at a time,
+      --interleave idle times of 1 ms to let the canvas refresh itself.
+      --If I ever get to a state where the emulator is up to 100% speed, this should be
+      --changed to wait the time that remains to complete a 1/60 seconds period
+      --to get 60 fps.
       timeout 1 $ drive interval state'
       return state
 

@@ -1,28 +1,31 @@
 module Core where
 
-import Prelude
-import Data.Int.Bits
-import Data.Tuple
-import Data.Maybe
-import Data.Either
-import Data.Foldable
-import Control.Monad.Eff
-import Control.Monad
-import Control.Bind
+import Prelude (show, (++), ($), (&&), (==), (||), (+), bind, (<$>), (/=)
+               ,(>>=), return, id, (<<<), (-), (<=))
+import Data.Int.Bits ((.&.), (.|.))
+import Data.Tuple (Tuple(Tuple), snd, fst)
+import Data.Maybe (Maybe(Nothing, Just), fromMaybe)
+import Data.Either (Either(Left, Right))
+import Data.Foldable (elem)
+import Control.Monad.Eff (Eff)
+import Control.Bind ((<=<))
+import Control.Monad.Rec.Class (tailRecM)
 
-import Types
-import MainMem
-import Ops
-import OpCodeMap
-import Gpu
-import Utils
-import Control.Monad.Rec.Class
+import Types (Z80State, MemAccess, SavedRegs, Regs, Mem, I8, I16)
+import MainMem (getIme, getIntE, getIntF, rd8, cleanMainMem, setIme, setIntF
+               ,setVblIntrr, setGpu, getGpu, updImeCnt, setRom)
+import Ops (callRoutine, getOpTiming, getCpuOp)
+import OpCodeMap (mme2op, basicOpTimings, branchBasicOpTimings, cbOpTimings
+                 ,basicOps)
+import Gpu (Canvas, gpuStep)
+import Utils (toHexStr, getOnBit)
 
-import Debug
+import Debug (StatTimer, condTr, timeIt)
 
+--Get a fresh initial Z80State.
+--The MemAccess effect is due to some writing operations during initialization.
 reset :: forall e. Array I8 -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 reset rom = do
-  resetScreen
   cs <- cleanState
   return
     cs {
@@ -32,6 +35,7 @@ reset rom = do
     }
 
 
+--Run emulation until 'interval' clocks have passed.
 run :: forall e. Int -> Z80State -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 run interval state = tailRecM go { intr : interval, st : state }
  where
@@ -44,6 +48,7 @@ run interval state = tailRecM go { intr : interval, st : state }
     let elapsed = st'.totalM - st.totalM
     return $ Left { intr : (intr - elapsed), st : st' }
 
+--Perform a single state operation, along with updatig accompanying state.
 step :: forall e. Z80State -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 step state@{ mem = oldMem@{regs = oldRegs} } = do
   opt <- opTiming
@@ -68,6 +73,7 @@ step state@{ mem = oldMem@{regs = oldRegs} } = do
   opTiming = getCurrOpTiming oldRegs.pc state
   updImeCntInMem st = st { mem = st.mem { mainMem = updImeCnt st.mem.mainMem } }
 
+--Get the clock amount of the current operation.
 getCurrOpTiming :: forall e. I16 -> Z80State -> Eff (ma :: MemAccess | e) Int
 getCurrOpTiming oldPc st = do
   opCode <- rd8 oldPc st.mem.mainMem
@@ -83,13 +89,15 @@ getCurrOpTiming oldPc st = do
             else basicOpTimings
   return $ getOpTiming addr opTimingTable
 
---NOTE is there a better way to set nested properties?
---consider checking the lens-equivalent in purescript.
+--Increase pc register. If the operation did some irregular jump,
+--do not touch it, otherwise increment it.
 incPc :: I8 -> Z80State -> Z80State
 incPc oldPc st =
   if oldPc /= st.mem.regs.pc
     then st
     else
+      --NOTE: is there a better way to set nested properties?
+      --consider checking the lens-equivalent in purescript.
       st {
         mem = st.mem {
           regs = st.mem.regs {
@@ -98,15 +106,18 @@ incPc oldPc st =
         }
       }
 
-
---NOTE change handleGpu to get the op timing itself, instead of reacquiring it here.
+--Update the gpu's state with the time it took to do the current operation,
+--as it is waiting a certain amount of time between the different modes of
+--updating the screen.
 handleGpu :: forall e. Int -> Z80State
           -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 handleGpu opTiming st = do
   gpu' <- gpuStep opTiming (getGpu st.mem.mainMem)
-  let intF' = (if gpu'.vblIntrr then --(0x01 .|. _)
-                                ({-trace ("vbl-totalM: " ++ show st.totalM) \_ ->-} (0x01 .|. _))
-                                else id)
+  let intF' = (if gpu'.vblIntrr
+                 then 
+                   ({-trace ("screen refresh, clk-count: " ++ show st.totalM) \_ ->-}
+                     (0x01 .|. _))
+                   else id)
                 $ getIntF st.mem.mainMem
 
   setGpu gpu' st.mem.mainMem
@@ -114,14 +125,13 @@ handleGpu opTiming st = do
   setIntF intF' st.mem.mainMem
   return st
 
+--Get the current interrupt handling operation, if there is an interrupt
+--waiting to be handled
 interruptOp :: forall e. Z80State -> Eff (ma :: MemAccess | e) Z80State
 interruptOp st = do
   setIntF (fst res $ getIntF st.mem.mainMem) st.mem.mainMem 
   setIme false st.mem.mainMem
   snd res st
---    st { mem = st.mem {
- --     mainMem = setIme2 false
-  --           =<< setIntF (fst res $ getIntF st.mem.mainMem) $ st.mem.mainMem } }
  where
   res :: Tuple (Int -> Int) (Z80State -> Eff (ma :: MemAccess | e) Z80State)
   res = fromMaybe (Tuple id return) mRes
@@ -133,12 +143,12 @@ interruptOp st = do
            16 -> Just $ Tuple (0xEF .&. _) (mme2op $ callRoutine true 0x60 )
            otherwise -> Nothing -- NOTE log this
 
+--Get bit flags of interrupts waiting to be handled AND enabled
 interruptBits :: Z80State -> I8
 interruptBits st = getIntE st.mem.mainMem .&. getIntF st.mem.mainMem
 
 checkShldHndlIntrr :: Z80State -> Boolean
 checkShldHndlIntrr st = getIme st.mem.mainMem && interruptBits st /= 0 
-
 
 cleanState :: forall e. Eff (ma :: MemAccess | e) Z80State
 cleanState = 
@@ -184,27 +194,32 @@ cleanSavedRegs =
 
 --Debug functions
 
-{--stepTime :: forall e. Z80State--}
-         {---> Eff (ma :: MemAccess, canvas :: Canvas, timer :: Timer | e) Z80State--}
-{--stepTime state = do--}
-  {--currOpCode <- rd8 state.mem.regs.pc state.mem.mainMem--}
-  {--currImm <- rd8 (state.mem.regs.pc+1) state.mem.mainMem--}
-  {--let timerIx = if (currOpCode `elem` memModifyOps)--}
-                {--|| (currOpCode == 0xCB && (currImm `elem` cbMemModifyOps))--}
-                  {--then 1 else 0--}
-  {--timeIt timerIx (\_ -> step state)--}
- {--where--}
-  {--memModifyOps =--}
-    {--[ 0x02 ,0x08 ,0x12 ,0x22 ,0x32 ,0x34 ,0x35 ,0x36 ,0x70 ,0x71--}
-    {--, 0x72 ,0x73 ,0x74 ,0x75 ,0x77 ,0xc4 ,0xc5 ,0xc7 ,0xcc ,0xcd ,0xcf ,0xd4--}
-    {--, 0xd5 ,0xd7 ,0xd9 ,0xdc ,0xdf ,0xe0 ,0xe2 ,0xe5 ,0xe7 ,0xea ,0xef ,0xf3--}
-    {--, 0xf5 ,0xf7 ,0xfb ,0xff--}
-    {--]--}
-  {--cbMemModifyOps = --}
-    {--[ 0x06, 0x0e, 0x16, 0x1e, 0x26, 0x2e, 0x36, 0x3e, 0x86, 0x8e, 0x96, 0x9e--}
-    {--, 0xa6, 0xae, 0xb6, 0xbe, 0xc6, 0xce, 0xd6, 0xde, 0xe6, 0xee, 0xf6, 0xfe--}
-    {--]--}
+--Step function that uses the Timing functions of Debug to compute average
+--running times for operations.
+stepTime :: forall e. Z80State
+         -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: StatTimer | e) Z80State
+stepTime state = do
+  currOpCode <- rd8 state.mem.regs.pc state.mem.mainMem
+  currImm <- rd8 (state.mem.regs.pc+1) state.mem.mainMem
+  let timerIx = if (currOpCode `elem` memModifyOps)
+                || (currOpCode == 0xCB && (currImm `elem` cbMemModifyOps))
+                  then 1 else 0
+  timeIt timerIx (\_ -> step state)
+ where
+  memModifyOps =
+    [ 0x02 ,0x08 ,0x12 ,0x22 ,0x32 ,0x34 ,0x35 ,0x36 ,0x70 ,0x71
+    , 0x72 ,0x73 ,0x74 ,0x75 ,0x77 ,0xc4 ,0xc5 ,0xc7 ,0xcc ,0xcd ,0xcf ,0xd4
+    , 0xd5 ,0xd7 ,0xd9 ,0xdc ,0xdf ,0xe0 ,0xe2 ,0xe5 ,0xe7 ,0xea ,0xef ,0xf3
+    , 0xf5 ,0xf7 ,0xfb ,0xff
+    ]
+  cbMemModifyOps = 
+    [ 0x06, 0x0e, 0x16, 0x1e, 0x26, 0x2e, 0x36, 0x3e, 0x86, 0x8e, 0x96, 0x9e
+    , 0xa6, 0xae, 0xb6, 0xbe, 0xc6, 0xce, 0xd6, 0xde, 0xe6, 0xee, 0xf6, 0xfe
+    ]
 
+--Useful function for tracing various properties of the Z80State,
+--every cpu step as long as shldTrc condition is satisfied.
+--Commented lines remain for ease of enabling.
 traceState :: Z80State -> Z80State
 traceState state@{ mem = oldMem@{regs = oldRegs} } =
   condTr (shldTrc state) (\_ -> "totalM: "++show (state.totalM)) $
@@ -237,4 +252,3 @@ shldTrc :: Z80State -> Boolean
 {--shldTrc state = state.totalM == 233644--}
 shldTrc state = false
 {--shldTrc state = state.mem.regs.pc == 0x0405 || state.mem.regs.pc == 0x0371--}
-

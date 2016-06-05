@@ -1,19 +1,17 @@
 module Ops where
 
-import Prelude
-import Data.Int.Bits
-import Data.Maybe
+import Prelude (class Eq, not, negate, ($), return, (/=), (<), (>), (==)
+               ,(+), bind, id, (||), (-), (<<<), (<$>), (&&))
+import Data.Int.Bits ((.^.), (.&.), (.|.), complement, zshr, shl)
+import Data.Maybe (fromMaybe)
 import Data.Array ((!!)) as A
-import Control.Monad.Eff
-import Control.Bind
+import Control.Monad.Eff (Eff)
+import Control.Bind ((<=<))
 
-import Types
-import MainMem
-import Utils
-import Debug
-
---NOTE: consider moving the timings to 2D arrays.
---separate from the opcode's logic
+import Types (I8, Z80State, MemAccess, I16, Regs, GetReg, SavedRegs, Mem
+             ,SetReg, l, h, adjRegs, a, setL, setH, setA)
+import MainMem (rd8, setIme, setImeCntDwn, wr8, wr16, rd16)
+import Utils (cmp2)
 
 -- Additions
 -- =========
@@ -107,16 +105,11 @@ addSPToHL regs =
 addI16s :: I8 -> I16 -> I16 -> { res :: I16, flags :: I8 }
 addI16s x1 x2 oldFlags = { res, flags }
  where
-  {--flags =  setCarryFlag16 sum--}
-        {--$  oldFlags--}
-       {--.|. testZeroFlag res--}
   flags =  testCarryFlag16 sum
        .|. testWeirdHalfCarryFlag16 x1 x2 res
        .|. zeroFlag .&. oldFlags
-        
   res = sum .&. 0xFFFF
   sum = x1 + x2
-
 
 -- Subtractions
 -- ============
@@ -138,7 +131,8 @@ subImmFromA { mainMem, regs } = do
   return (subXFromA imm regs) { pc = regs.pc + 2 }
 
 --NOTE: Subtractions and additions are relatively similar. Consider
---Using same functions for both, if it doesn't obfuscate much.
+--Using same functions for both,
+--if it doesn't obfuscate much nor degrade performance.
 subXFromA :: I8 -> Regs -> Regs
 subXFromA x regs =
   regs {a = diff.res, f = diff.flags}
@@ -578,8 +572,8 @@ ldMemHLFromRegDec :: forall e. GetReg -> Mem -> Eff (ma :: MemAccess | e) Mem
 ldMemHLFromRegDec  = ldMemHLFromRegIncDec decRegWithCarry
 
 ldMemHLFromRegIncDec :: forall e.
-     (GetReg -> GetReg -> SetReg -> SetReg -> Regs -> Regs)
   -- Inc/Dec reg operation's type signature
+     (GetReg -> GetReg -> SetReg -> SetReg -> Regs -> Regs)
   -> GetReg
   -> Mem -> Eff (ma :: MemAccess | e) Mem
 ldMemHLFromRegIncDec op getReg mem@{regs} = do
@@ -651,9 +645,6 @@ compAToMemHL { mainMem, regs } =
   (\mhl -> compAToX mhl regs)
     <$> rd8 (joinRegs h l regs) mainMem
 
-  {--hlMem <- rd8 (joinRegs h l regs) mainMem--}
-  {--return $ compAToX hlMem regs--}
-
 --CP A,n
 compAToImm :: forall e. Mem -> Eff (ma :: MemAccess | e) Regs
 compAToImm { mainMem, regs } = do
@@ -667,11 +658,6 @@ compAToX x regs = regs { f = diff.flags }
 -- Stack operations
 -- ================
 
---NOTE: On the one hand, there's an advantage of letting the compiler catch
---more mistakes by using row polymorphism in this case,
---on the other hand it obfuscates the signature, is there a better way?
---forall r s. { regs :: {sp::I8 | s}, mem :: MainMem | r }
---         -> { regs :: {sp::I8 | s}, mem :: MainMem | r }
 --NOTE: Only 4 versions of PUSH so consider hard-coding them for performance.
 --PUSH RR
 pushReg :: forall e. GetReg -> GetReg
@@ -850,8 +836,8 @@ nop :: Regs -> Regs
 nop = id
 
 --Invalid opCode
-invalidOpCode :: Z80State -> Z80State
 --NOTE: LOG THIS! for debugging purposes
+invalidOpCode :: Z80State -> Z80State
 invalidOpCode state = state { stop = true }
 
 --STOP 
@@ -867,7 +853,6 @@ halt state =
 
 --DI
 --EI
- --NOTE a hack, until I understand the intricacies of EI
 setInterrupts :: forall e. Boolean -> Mem -> Eff (ma :: MemAccess | e) Mem
 setInterrupts enable mem@{ mainMem } = do
   if enable
@@ -974,7 +959,7 @@ testHalfCarryFlag16 :: I16 -> I16 -> I16 -> I8
 testHalfCarryFlag16 reg1 reg2 sum = if res /= 0 then carryFlag else 0
  where res = 0x0100 .&. (reg1 .^. reg2 .^. sum)
 
---NOTE: I'm not sure why this calculation is the way it is, or what it represents
+--NOTE: I'm not sure why this calculation is the way it is, or what it represents.
 --but according to specifications, this is how it should be done.
 testWeirdHalfCarryFlag16 :: I16 -> I16 -> I16 -> I8
 testWeirdHalfCarryFlag16 reg1 reg2 sum = if res /= 0 then halfCarryFlag else 0
@@ -985,6 +970,7 @@ getCpuOp :: forall e. Int -> Array (Z80State -> Eff (ma :: MemAccess | e) Z80Sta
          -> Z80State -> Eff (ma :: MemAccess | e) Z80State
 getCpuOp ix table = fromMaybe return $ table A.!! ix
 
+--NOTE: replace fromMaybe with an error report mechanism to trace bad cases
 getOpTiming :: Int -> Array Int -> Int
 getOpTiming ix table = fromMaybe (-1) $ table A.!! ix
 

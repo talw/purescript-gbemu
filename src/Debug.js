@@ -2,8 +2,9 @@
 
 // module Debug
 
-var totals = new Array(10).fill(0);
-var counts = new Array(10).fill(0);
+var maxAverageBins=10;
+var totals = new Array(maxAverageBins).fill(0);
+var counts = new Array(maxAverageBins).fill(0);
 
 var startTime;
 

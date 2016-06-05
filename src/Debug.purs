@@ -7,66 +7,74 @@ module Debug
   , condTr
   , ramStr
   , memStrRange
-  {--, timeIt--}
-  {--, Timer--}
+  , timeIt
+  , StatTimer
   ) where
 
-import Prelude
-import Math as M
+import Prelude (class Show, Unit, ($), (+), (++), (-), (<<<), unit, show
+               ,return, bind)
 import Data.Sequence as S
-import Data.Maybe
-import Control.Bind
-import Control.Monad.Eff
-import Data.Int.Bits
-import Data.Array as A
+import Control.Bind ((=<<))
+import Control.Monad.Eff (Eff)
 import Data.Tuple as T
-import Debug.Trace
-import Data.Foldable
 
-import Types
-import Utils
+import Debug.Trace (spy, trace, traceA, traceAny, traceAnyA, traceAnyM
+                   ,traceShow, traceShowA, traceShowM)
+import Data.Foldable (class Foldable)
+import Types (I8)
+import Utils (showPacked, toHexStr)
 
 -- Timer
 -- =====
 
-{--foreign import data Timer :: !--}
+foreign import data StatTimer :: !
 
-{--foreign import startTimer :: forall e. Eff (timer :: Timer | e) Unit--}
-{--foreign import endTimer :: forall e. Eff (timer :: Timer | e) Int--}
-{--foreign import recordTime :: forall e. Int -> Int -> Int -> Eff (timer :: Timer | e) Unit--}
+foreign import startTimer :: forall e. Eff (timer :: StatTimer | e) Unit
+foreign import endTimer :: forall e. Eff (timer :: StatTimer | e) Int
+foreign import recordTime :: forall e. Int -> Int -> Int
+                          -> Eff (timer :: StatTimer | e) Unit
 
-{--timeIt :: forall e a. Int -> (Unit -> Eff (timer :: Timer | e) a) -> Eff (timer :: Timer | e) a--}
-{--timeIt timerIx f = do--}
-  {--startTimer--}
-  {--res <- f unit--}
-  {--recordTime timerIx 1 =<< endTimer--}
-  {--return res--}
+--Compute average running times for operations,
+--segregated on a numeric id (e.g. averages can be computed separately for
+--cb operations and regular operations)
+timeIt :: forall e a. Int -> (Unit -> Eff (timer :: StatTimer | e) a)
+       -> Eff (timer :: StatTimer | e) a
+timeIt timerIx f = do
+  startTimer
+  res <- f unit
+  recordTime timerIx 1 =<< endTimer
+  return res
 
 -- Trace functions
 -- ===============
 
+--Trace show
 trs :: forall a. Show a => String -> a -> a
 trs n a = trace (n++": "++show a) \_ -> a
 
+--Conditional trace show
 ctrs :: forall a. Show a => Boolean -> String -> a -> a
 ctrs b n a = if b
   then trace (n++": "++show a) \_ -> a
   else a
 
+--Trace hex
 trh :: String -> Int -> Int
 trh n a = trace (n++": "++toHexStr 2 a) \_ -> a
 
+--Conditional trace hex
 ctrh :: Boolean -> String -> Int -> Int
 ctrh b n a = if b
   then trace (n++": "++toHexStr 2 a) \_ -> a
   else a
 
+--Conditional trace of a separate object than the returned one.
 condTr :: forall a. Boolean -> (Unit -> String) -> a -> a
 condTr false _ a = a
 condTr true strF a = trace (strF unit) \_ -> a
 
--- Showing data structures
--- =======================
+-- Stringify memory
+-- ================
 
 memStrRange :: Int -> Int -> S.Seq I8 -> String
 memStrRange from to seq = 

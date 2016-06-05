@@ -11,6 +11,8 @@ exports.setGpu=function(val) {
   }
 }
 
+//NOTE: imeEnableCnt should be 2 according to specs,
+//but according to simulations I've run it looks like it's 3
 exports.setImeCntDwn=function(mm) {
   return function() {
     mm.imeEnableCnt = 3;
