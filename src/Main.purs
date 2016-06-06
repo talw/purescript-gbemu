@@ -3,16 +3,25 @@ module Main where
 import Prelude (Unit, ($), return, bind, (>))
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE, log)
+import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.Aff (Aff, launchAff)
 import Control.Monad.Eff.Class (liftEff)
 import DOM.Timer (Timer, timeout)
+import Network.HTTP.Affjax (AJAX)
 
 import Loader (loadRom)
 import Core (run, reset)
 import Gpu (Canvas)
 import Types (Z80State, MemAccess)
 
---NOTE type a type signature once you reach a stable stage
+main :: forall e. Eff
+  ( err :: EXCEPTION
+  , console :: CONSOLE
+  , ajax :: AJAX
+  , canvas :: Canvas
+  , ma :: MemAccess
+  , timer :: Timer
+  | e) Unit
 main = launchAff $ do
   afLog "loading rom..."
   rom <- loadRom

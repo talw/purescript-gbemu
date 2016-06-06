@@ -17,6 +17,7 @@
     "purescript-debug": "^0.1.7",
     "purescript-timers": "^1.0.0",
     "purescript-tailrec": "^0.3.1",
+    "purescript-partial": "^1.1.2",
     "purescript-sequences": "~0.6.0",
     "purescript-foldable-traversable": "~0.4.2",
     "purescript-unfoldable": "~0.4.1",

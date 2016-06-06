@@ -8,7 +8,7 @@ module Gpu
   ) where
 
 import Prelude (Unit, (*), (+), void, ($), (/=), bind, (-), unit, return
-               ,(<), (&&), (>=), id, negate, not, (==), map)
+               ,(<), (&&), (>=), id, negate, not, (==), map, (++))
 import Control.Bind ((=<<))
 import Control.Monad.Eff (Eff)
 import Data.Function (runFn4, mkFn4)
@@ -17,8 +17,10 @@ import Data.Int.Bits ((.&.), (.|.), shl, zshr)
 import Data.Foldable (traverse_)
 import Data.Functor ((<$))
 import Data.Array as A
-import Data.Maybe (Maybe(Just))
+import Data.Maybe (Maybe(..))
 import Graphics.Canvas (Canvas, Context2D, getCanvasElementById, getContext2D)
+import Partial.Unsafe (unsafePartial)
+import Partial (crash)
 
 import Types (MemAccess, MemSection, I16, Gpu, I8, Palette, Color
              ,GpuMode(OamScan, HBlank, VBlank, VramScan), Tiles(Tiles))
@@ -41,9 +43,12 @@ modeDuration = case _ of
   OamScan -> 20
 
 getCanvas :: forall e. Eff (canvas :: Canvas | e) Context2D
-getCanvas = do 
-  Just canvasElem <- getCanvasElementById "screen"
-  getContext2D canvasElem
+getCanvas = unsafePartial $ do 
+  mCanvasElem <- getCanvasElementById canvasElemId
+  case mCanvasElem of
+    Just canvasElem -> getContext2D canvasElem
+    Nothing -> crash
+      $ "canvas with element id: " ++ canvasElemId ++ " was not found!"
 
 cleanGpu :: Gpu
 cleanGpu =
@@ -332,3 +337,6 @@ bytesWidth = 160*4
 
 pixHeight :: Int
 pixHeight = 144
+
+canvasElemId :: String
+canvasElemId = "screen"
