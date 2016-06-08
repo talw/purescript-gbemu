@@ -3,6 +3,7 @@ module Types where
 
 import Prelude (class Eq, show, (++), (+), ($))
 import Data.Int.Bits (shl)
+import Control.Monad.Eff (Eff)
 
 import Utils (toHexStr)
 
@@ -44,6 +45,8 @@ foreign import data MemAccess :: !
 --A java script array that is mutable
 --through Eff computations with MemAccess effect
 foreign import data MemSection :: *
+--NOTE: make effect more granular, i.e. MemAccess(read) and MemModify(write)
+foreign import data MemAccess :: !
 
 type Gpu = 
   { mTimer    :: Int
@@ -88,7 +91,12 @@ data GpuMode = HBlank
 derive instance eqGpuMode :: Eq GpuMode
 
 
-type Regs =
+newtype Regs = Regs RegsObj
+
+--NOTE; hide, RegsObj. Regs is a modifiable type.
+--In order to ensure no one accesses it's content outside of an Eff (RegsAccess)
+--computation, the inner object will be hidden
+type RegsObj =
   { pc  :: I16
   , sp  :: I16
   , a   :: I8
@@ -102,8 +110,10 @@ type Regs =
   , brTkn :: Boolean
   }
 
+foreign import data RegsAccess :: !
+
 type GetReg = Regs -> I8
-type SetReg = I8 -> Regs -> Regs
+type SetReg = forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
 
 type SavedRegs =
   { a :: I8
@@ -116,63 +126,44 @@ type SavedRegs =
   , f :: I8
   }
 
-pc :: Regs -> Int
-pc = _.pc
-sp :: Regs -> Int
-sp = _.sp
-a :: Regs -> Int
-a  = _.a 
-b :: Regs -> Int
-b  = _.b 
-c :: Regs -> Int
-c  = _.c 
-d :: Regs -> Int
-d  = _.d 
-e :: Regs -> Int
-e  = _.e 
-h :: Regs -> Int
-h  = _.h 
-l :: Regs -> Int
-l  = _.l 
-f :: Regs -> Int
-f  = _.f  
+{--pc :: Regs -> Int--}
+{--pc = _.pc--}
+{--sp :: Regs -> Int--}
+{--sp = _.sp--}
+{--a :: Regs -> Int--}
+{--a  = _.a --}
+{--b :: Regs -> Int--}
+{--b  = _.b --}
+{--c :: Regs -> Int--}
+{--c  = _.c --}
+{--d :: Regs -> Int--}
+{--d  = _.d --}
+{--e :: Regs -> Int--}
+{--e  = _.e --}
+{--h :: Regs -> Int--}
+{--h  = _.h --}
+{--l :: Regs -> Int--}
+{--l  = _.l --}
+{--f :: Regs -> Int--}
+{--f  = _.f  --}
 
-setA :: Int -> Regs -> Regs
-setA x = _ { a = x }
-setB :: Int -> Regs -> Regs
-setB x = _ { b = x }
-setC :: Int -> Regs -> Regs
-setC x = _ { c = x }
-setD :: Int -> Regs -> Regs
-setD x = _ { d = x }
-setE :: Int -> Regs -> Regs
-setE x = _ { e = x }
-setH :: Int -> Regs -> Regs
-setH x = _ { h = x }
-setL :: Int -> Regs -> Regs
-setL x = _ { l = x }
-setF :: Int -> Regs -> Regs
-setF x = _ { f = x }
+{--setA :: Int -> Regs -> Regs--}
+{--setA x = _ { a = x }--}
+{--setB :: Int -> Regs -> Regs--}
+{--setB x = _ { b = x }--}
+{--setC :: Int -> Regs -> Regs--}
+{--setC x = _ { c = x }--}
+{--setD :: Int -> Regs -> Regs--}
+{--setD x = _ { d = x }--}
+{--setE :: Int -> Regs -> Regs--}
+{--setE x = _ { e = x }--}
+{--setH :: Int -> Regs -> Regs--}
+{--setH x = _ { h = x }--}
+{--setL :: Int -> Regs -> Regs--}
+{--setL x = _ { l = x }--}
+{--setF :: Int -> Regs -> Regs--}
+{--setF x = _ { f = x }--}
 
 --NOTE:: Make these types 'newtype's so that you gain compile-time safety.
 type I8 = Int
 type I16 = Int
-
---Debug functions
-
-regsStr :: Regs -> String
-regsStr regs = "af: "    ++ af
-          ++ "\nbc: "    ++ bc
-          ++ "\nde: "    ++ de
-          ++ "\nhl: "    ++ hl
-          ++ "\nsp: "    ++ spVal
-          ++ "\npc: "    ++ pcVal
-          ++ "\nbrTkn: " ++ show regs.brTkn
- where
-  af = toHexStr 4 $ joinRegs a f regs
-  bc = toHexStr 4 $ joinRegs b c regs
-  de = toHexStr 4 $ joinRegs d e regs
-  hl = toHexStr 4 $ joinRegs h l regs
-  spVal = toHexStr 4 $ regs.sp
-  pcVal = toHexStr 4 $ regs.pc
-  joinRegs msByteReg lsByteReg regs = (msByteReg regs `shl` 8) + lsByteReg regs

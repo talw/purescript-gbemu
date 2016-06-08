@@ -7,6 +7,7 @@ import Data.Tuple (Tuple(Tuple), snd, fst)
 import Data.Maybe (Maybe(Nothing, Just), fromMaybe)
 import Data.Either (Either(Left, Right))
 import Data.Foldable (elem)
+import Data.Functor ((<$))
 import Control.Monad.Eff (Eff)
 import Control.Bind ((=<<))
 import Control.Monad.Rec.Class (tailRecM)
@@ -19,6 +20,7 @@ import OpCodeMap (mme2op, basicOpTimings, branchBasicOpTimings, cbOpTimings
                  ,basicOps)
 import Gpu (Canvas, gpuStep)
 import Utils (toHexStr, getOnBit)
+import Regs
 
 import Debug (StatTimer, condTr, timeIt)
 
@@ -53,23 +55,25 @@ step :: forall e. Z80State -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80Sta
 step state@{ mem = oldMem@{regs = oldRegs} } = do
   opt <- opTiming
   state2 <- op state
-  let state3 = incPc oldRegs.pc state2
+  state3 <- incPc oldPc state2
   state4 <- incTime state3
   let state5 = updImeCntInMem state4
-  handleGpu opt state5
-    {--<<< traceState--}
+  handleGpu opt
+    state5
+    {--$ traceState state5--}
  where
+  oldPc = pc oldRegs
   op st = if checkShldHndlIntrr st
     then interruptOp st
     else regularOp st
   regularOp st = do
     coc <- getCurrOpCode st
     getCpuOp coc basicOps st
-  getCurrOpCode st = rd8 st.mem.regs.pc st.mem.mainMem
+  getCurrOpCode st = rd8 (pc st.mem.regs) st.mem.mainMem
   incTime st@{totalM} = do
     opt <- opTiming
     return st { totalM = st.totalM + opt }
-  opTiming = getCurrOpTiming oldRegs.pc state
+  opTiming = getCurrOpTiming oldPc state
   updImeCntInMem st = st { mem = st.mem { mainMem = updImeCnt st.mem.mainMem } }
 
 --Get the clock amount of the current operation.
@@ -83,31 +87,23 @@ getCurrOpTiming oldPc st = do
   let opTimingTable = if isExtOp
         then cbOpTimings 
         else
-          if st.mem.regs.brTkn
+          if brTkn st.mem.regs
             then branchBasicOpTimings
             else basicOpTimings
   return $ getOpTiming addr opTimingTable
 
---Increase pc register. If the operation did some irregular jump,
---do not touch it, otherwise increment it.
-incPc :: I8 -> Z80State -> Z80State
-incPc oldPc st =
-  if oldPc /= st.mem.regs.pc
-    then st
-    else
-      --NOTE: is there a better way to set nested properties?
-      --consider checking the lens-equivalent in purescript.
-      st {
-        mem = st.mem {
-          regs = st.mem.regs {
-            pc = 65535 .&. (st.mem.regs.pc + 1)
-          }
-        }
-      }
-
 --Update the gpu's state with the time it took to do the current operation,
 --as it is waiting a certain amount of time between the different modes of
 --updating the screen.
+--NOTE is there a better way to set nested properties?
+--consider checking the lens-equivalent in purescript.
+incPc :: forall e. I8 -> Z80State -> Eff (ma :: MemAccess | e) Z80State
+incPc oldPc st =
+  if oldPc /= pc st.mem.regs
+    then return st
+    else st <$ setPC (65535 .&. (pc st.mem.regs + 1)) st.mem.regs
+
+--NOTE change handleGpu to get the op timing itself, instead of reacquiring it here.
 handleGpu :: forall e. Int -> Z80State
           -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 handleGpu opTiming st = do
@@ -164,33 +160,6 @@ cleanMem =
   , mainMem : _
   } <$> cleanMainMem
 
-cleanRegs :: Regs
-cleanRegs =
-  { pc    : 0x0101
-  , sp    : 0xFFFE
-  , a     : 0x01
-  , b     : 0
-  , c     : 0x13
-  , d     : 0
-  , e     : 0xD8
-  , h     : 0x01
-  , l     : 0x4D
-  , f     : 0xB0
-  , brTkn : false
-  }
-
-cleanSavedRegs :: SavedRegs
-cleanSavedRegs =
-  { a  : 0
-  , b  : 0
-  , c  : 0
-  , d  : 0
-  , e  : 0
-  , h  : 0
-  , l  : 0
-  , f  : 0
-  }
-
 --Debug functions
 
 --Step function that uses the Timing functions of Debug to compute average
@@ -198,8 +167,8 @@ cleanSavedRegs =
 stepTime :: forall e. Z80State
          -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: StatTimer | e) Z80State
 stepTime state = do
-  currOpCode <- rd8 state.mem.regs.pc state.mem.mainMem
-  currImm <- rd8 (state.mem.regs.pc+1) state.mem.mainMem
+  currOpCode <- rd8 (pc state.mem.regs) state.mem.mainMem
+  currImm <- rd8 (pc state.mem.regs + 1) state.mem.mainMem
   let timerIx = if (currOpCode `elem` memModifyOps)
                 || (currOpCode == 0xCB && (currImm `elem` cbMemModifyOps))
                   then 1 else 0
@@ -227,7 +196,7 @@ traceState state@{ mem = oldMem@{regs = oldRegs} } =
   {--condTr (shldTrc state) (\_ -> tileMap0Str state.mem) $--}
   {--condTr (shldTrc state) (\_ -> tileSet0Str state.mem) $--}
 
-  {--condTr (shldTrc state) (\_ -> regsStr oldRegs) $--}
+  condTr (shldTrc state) (\_ -> regsStr oldRegs) $
   {--condTr (shldTrc state) (\_ -> pcArea oldMem) $--}
   {--condTr (shldTrc state) (\_ -> spArea oldMem) $--}
   {--condTr shldTrc (\_ -> ioArea oldMem) $--}

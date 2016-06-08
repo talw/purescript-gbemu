@@ -32,7 +32,7 @@ main = launchAff $ do
   afLog "reset finished"
 
   --Run the emulator just enough to get to the title screen of Tetris.
-  liftEff $ drive 1034000 initialState
+  liftEff $ drive 2634000 initialState
   
   afLog "stopped."
 
