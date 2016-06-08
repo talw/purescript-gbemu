@@ -8,7 +8,7 @@ import Data.Maybe (Maybe(Nothing, Just), fromMaybe)
 import Data.Either (Either(Left, Right))
 import Data.Foldable (elem)
 import Control.Monad.Eff (Eff)
-import Control.Bind ((<=<))
+import Control.Bind ((=<<))
 import Control.Monad.Rec.Class (tailRecM)
 
 import Types (Z80State, MemAccess, SavedRegs, Regs, Mem, I8, I16)
@@ -52,13 +52,12 @@ run interval state = tailRecM go { intr : interval, st : state }
 step :: forall e. Z80State -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 step state@{ mem = oldMem@{regs = oldRegs} } = do
   opt <- opTiming
-  handleGpu opt
-    <=< (return <<< updImeCntInMem)
-    <=< incTime
-    <=< (return <<< incPc oldRegs.pc)
-    <=< op
+  state2 <- op state
+  let state3 = incPc oldRegs.pc state2
+  state4 <- incTime state3
+  let state5 = updImeCntInMem state4
+  handleGpu opt state5
     {--<<< traceState--}
-     $  state
  where
   op st = if checkShldHndlIntrr st
     then interruptOp st
