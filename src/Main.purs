@@ -14,6 +14,8 @@ import Core (run, reset)
 import Gpu (Canvas)
 import Types (Z80State, MemAccess)
 
+foreign import changeLabel :: forall e. String -> Eff (console :: CONSOLE | e) Unit
+
 main :: forall e. Eff
   ( err :: EXCEPTION
   , console :: CONSOLE
