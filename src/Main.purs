@@ -40,7 +40,7 @@ drive :: forall e. Int -> Z80State
 drive interval state = do
   {--isPause <- readFromEnvSomething--}
   {--state' <- run frameDur state--}
-  state' <- run 100 state
+  state' <- run frameDur state
   if state'.totalM > interval
     then do
       changeLabel "Stopped"
