@@ -91,26 +91,26 @@ data GpuMode = HBlank
 derive instance eqGpuMode :: Eq GpuMode
 
 
-newtype Regs = Regs RegsObj
+foreign import data Regs :: *
+foreign import data RegsAccess :: !
+{--newtype Regs = Regs RegsObj--}
 
 --NOTE; hide, RegsObj. Regs is a modifiable type.
 --In order to ensure no one accesses it's content outside of an Eff (RegsAccess)
 --computation, the inner object will be hidden
-type RegsObj =
-  { pc  :: I16
-  , sp  :: I16
-  , a   :: I8
-  , b   :: I8
-  , c   :: I8
-  , d   :: I8
-  , e   :: I8
-  , h   :: I8
-  , l   :: I8
-  , f   :: I8
-  , brTkn :: Boolean
-  }
-
-foreign import data RegsAccess :: !
+{--type RegsObj =--}
+  {--{ pc  :: I16--}
+  {--, sp  :: I16--}
+  {--, a   :: I8--}
+  {--, b   :: I8--}
+  {--, c   :: I8--}
+  {--, d   :: I8--}
+  {--, e   :: I8--}
+  {--, h   :: I8--}
+  {--, l   :: I8--}
+  {--, f   :: I8--}
+  {--, brTkn :: Boolean--}
+  {--}--}
 
 type GetReg = Regs -> I8
 type SetReg = forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs

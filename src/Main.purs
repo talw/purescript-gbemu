@@ -32,15 +32,15 @@ main = launchAff $ do
   afLog "reset finished"
 
   --Run the emulator just enough to get to the title screen of Tetris.
-  liftEff $ drive 2634000 initialState
-  
-  afLog "stopped."
+  liftEff $ drive 1034000 initialState
+  {--liftEff $ drive 100 initialState--}
 
 drive :: forall e. Int -> Z80State
       -> Eff (ma :: MemAccess, canvas :: Canvas, timer :: Timer, console :: CONSOLE | e) Z80State
 drive interval state = do
   {--isPause <- readFromEnvSomething--}
-  state' <- run frameDur state
+  {--state' <- run frameDur state--}
+  state' <- run 100 state
   if state'.totalM > interval
     then do
       changeLabel "Stopped"

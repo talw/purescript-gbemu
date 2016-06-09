@@ -154,11 +154,14 @@ cleanState =
   } <$> cleanMem
 
 cleanMem :: forall e. Eff (ma :: MemAccess | e) Mem
-cleanMem =
-  { regs : cleanRegs
-  , svdRegs : cleanSavedRegs
-  , mainMem : _
-  } <$> cleanMainMem
+cleanMem = do
+  cmm <- cleanMainMem
+  cr <- cleanRegs
+  return
+    { regs : cr
+    , svdRegs : cleanSavedRegs
+    , mainMem : cmm
+    }
 
 --Debug functions
 
