@@ -20,32 +20,22 @@ ss2op :: forall e. (Z80State -> Z80State)
       -> Z80State -> Eff (ma :: MemAccess | e) Z80State
 ss2op ss = return <<< ss
 
-rr2op :: forall e. (Regs -> Regs)
-      -> Z80State -> Eff (ma :: MemAccess | e) Z80State
-rr2op rr state@{mem=mem@{regs}} =
-  return $ state { mem = mem { regs = rr regs } }
-
-mr2op :: forall e. (Mem -> Regs)
-      -> Z80State -> Eff (ma :: MemAccess | e) Z80State
-mr2op mr state@{mem=mem@{regs}} =
-  return $ state { mem = mem { regs = mr mem } }
-
 mm2op :: forall e. (Mem -> Mem)
       -> Z80State -> Eff (ma :: MemAccess | e) Z80State
 mm2op mm state@{mem=mem@{regs}} =
-  return $ state { mem = mm mem }
+  return state { mem = mm mem }
 
 rre2op :: forall e. (Regs -> Eff (ma :: MemAccess | e) Regs)
       -> Z80State -> Eff (ma :: MemAccess | e) Z80State
 rre2op rr state@{mem=mem@{regs}} = do
-  regs' <- rr regs
-  return state { mem = mem { regs = regs' } }
+  rr regs
+  return state
 
 mre2op :: forall e. (Mem -> Eff (ma :: MemAccess | e) Regs)
       -> Z80State -> Eff (ma :: MemAccess | e) Z80State
 mre2op mr state@{mem=mem@{regs}} = do
-  regs' <- mr mem
-  return state { mem = mem { regs = regs' } }
+  mr mem
+  return state
 
 mme2op :: forall e. (Mem -> Eff (ma :: MemAccess | e) Mem)
       -> Z80State -> Eff (ma :: MemAccess | e) Z80State
@@ -115,7 +105,7 @@ cbOpTimings =
 basicOps :: forall e. Array (Z80State -> Eff (ma :: MemAccess | e) Z80State)
 basicOps = 
                                               -- 0x
-  [ rr2op $ nop                               -- NOP
+  [ ss2op nop                               -- NOP
   , mre2op $ ldTwoRegsFromImm setB setC       -- LD BC,nn
   , mme2op $ ldMem2RFromReg bc a             -- LD (BC),A
   , rre2op $ incRegWithCarry b c setB setC     -- INC BC

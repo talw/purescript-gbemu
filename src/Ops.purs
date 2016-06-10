@@ -863,7 +863,7 @@ adjAForBCDAdd regs = setF f' =<< setA (0xFF .&. a') regs
       }
 
 --NOP
-nop :: Regs -> Regs
+nop :: Z80State -> Z80State
 nop = id
 
 --Invalid opCode
