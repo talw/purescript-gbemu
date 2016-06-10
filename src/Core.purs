@@ -54,6 +54,8 @@ run interval state = tailRecM go { intr : interval, st : state }
 step :: forall e. Z80State -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 step state@{ mem = oldMem@{regs = oldRegs} } = do
   opt <- opTiming
+  let incTime st@{totalM} = do
+        return st { totalM = st.totalM + opt }
   state2 <- op state
   state3 <- incPc oldPc state2
   state4 <- incTime state3
@@ -70,9 +72,6 @@ step state@{ mem = oldMem@{regs = oldRegs} } = do
     coc <- getCurrOpCode st
     getCpuOp coc basicOps st
   getCurrOpCode st = rd8 (pc st.mem.regs) st.mem.mainMem
-  incTime st@{totalM} = do
-    opt <- opTiming
-    return st { totalM = st.totalM + opt }
   opTiming = getCurrOpTiming oldPc state
   updImeCntInMem st = st { mem = st.mem { mainMem = updImeCnt st.mem.mainMem } }
 
