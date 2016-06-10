@@ -18,7 +18,7 @@ Screenshot of current status:
 Things left to do:
 - Must have (ordered by priority) 
   - Acceptable performance
-    - On my processor, 3570K @ 3.4GHZ, it takes 24 seconds, vs 8 seconds on my Game Boy Advance, to reach the main title screen of Tetris.
+    - On my processor, 3570K @ 3.4GHZ, it takes 20 seconds, vs 8 seconds on my Game Boy Advance, to reach the main title screen of Tetris.
     - This is after aggressively modifying my code to perform better, e.g. changing all my memory reads and writes to be on mutable javascript arrays (uggh...), and DEabstracting some code per what I've got from cpu profiles.
     - **This is the main issue that is holding back this project.** 
   - Foreground objects rendering - very simple to implement as the infrastructure already exists 
