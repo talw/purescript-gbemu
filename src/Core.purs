@@ -53,32 +53,32 @@ run interval state = tailRecM go { intr : interval, st : state }
 --Perform a single state operation, along with updatig accompanying state.
 step :: forall e. Z80State -> Eff (ma :: MemAccess, canvas :: Canvas | e) Z80State
 step state@{ mem = oldMem@{regs = oldRegs} } = do
-  opt <- opTiming
+  currOpCode <- rd8 oldPc state.mem.mainMem
+  opTiming <- getCurrOpTiming currOpCode oldPc state
+
   let incTime st@{totalM} = do
-        return st { totalM = st.totalM + opt }
+        return st { totalM = st.totalM + opTiming }
+
+  let op st = if checkShldHndlIntrr st
+        then interruptOp st
+        else regularOp st
+      regularOp st = do
+        getCpuOp currOpCode basicOps st
+
   state2 <- op state
   state3 <- incPc oldPc state2
   state4 <- incTime state3
   let state5 = updImeCntInMem state4
-  handleGpu opt
+  handleGpu opTiming
     state5
     {--$ traceState state5--}
  where
   oldPc = pc oldRegs
-  op st = if checkShldHndlIntrr st
-    then interruptOp st
-    else regularOp st
-  regularOp st = do
-    coc <- getCurrOpCode st
-    getCpuOp coc basicOps st
-  getCurrOpCode st = rd8 (pc st.mem.regs) st.mem.mainMem
-  opTiming = getCurrOpTiming oldPc state
   updImeCntInMem st = st { mem = st.mem { mainMem = updImeCnt st.mem.mainMem } }
 
 --Get the clock amount of the current operation.
-getCurrOpTiming :: forall e. I16 -> Z80State -> Eff (ma :: MemAccess | e) Int
-getCurrOpTiming oldPc st = do
-  opCode <- rd8 oldPc st.mem.mainMem
+getCurrOpTiming :: forall e. Int -> I16 -> Z80State -> Eff (ma :: MemAccess | e) Int
+getCurrOpTiming opCode oldPc st = do
   let isExtOp = opCode == 0xCB
   addr <- if isExtOp
     then rd8 (oldPc+1) st.mem.mainMem
