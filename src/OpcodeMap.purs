@@ -117,7 +117,7 @@ basicOps =
                                               -- 0x
   [ rr2op $ nop                               -- NOP
   , mre2op $ ldTwoRegsFromImm setB setC       -- LD BC,nn
-  , mme2op $ ldMem2RFromReg b c a             -- LD (BC),A
+  , mme2op $ ldMem2RFromReg bc a             -- LD (BC),A
   , rre2op $ incRegWithCarry b c setB setC     -- INC BC
 
   , rre2op $ incReg b setB                     -- INC B
@@ -126,7 +126,7 @@ basicOps =
   , rre2op $ rotA LeftD true                   -- RLC A
 
   , mme2op $ ldMemImmFromSP                   -- LD (nn),SP
-  , rre2op $ add2RegsToHL b c                  -- ADD HL,BC
+  , rre2op $ add2RegsToHL bc                  -- ADD HL,BC
   , mre2op $ ldRegFromMem2R setA b c          -- LD A,(BC)
   , rre2op $ decRegWithCarry b c setB setC     -- DEC BC
 
@@ -138,7 +138,7 @@ basicOps =
                                               -- 1x
   , ss2op $ stop                              -- STOP
   , mre2op $ ldTwoRegsFromImm setD setE       -- LD DE,nn
-  , mme2op $ ldMem2RFromReg d e a             -- LD (DE),A
+  , mme2op $ ldMem2RFromReg de a             -- LD (DE),A
   , rre2op $ incRegWithCarry d e setD setE     -- INC DE
 
   , rre2op $ incReg d setD                     -- INC D
@@ -147,7 +147,7 @@ basicOps =
   , rre2op $ rotA LeftD false                  -- RL A
 
   , mre2op $ jumpRelImm                       -- JR n
-  , rre2op $ add2RegsToHL d e                  -- ADD HL,DE
+  , rre2op $ add2RegsToHL de                  -- ADD HL,DE
   , mre2op $ ldRegFromMem2R setA d e          -- LD A,(DE)
   , rre2op $ decRegWithCarry d e setD setE     -- DEC DE
 
@@ -168,7 +168,7 @@ basicOps =
   , rre2op $ adjAForBCDAdd                     -- DAA
 
   , mre2op $ jumpRelImmFlag false zeroFlag    -- JR Z,n
-  , rre2op $ add2RegsToHL h l                  -- ADD HL,HL
+  , rre2op $ add2RegsToHL hl                  -- ADD HL,HL
   , mre2op $ ldRegFromMemHLInc setA           -- LDI A,(HL)
   , rre2op $ decRegWithCarry h l setH setL     -- DEC HL
 
@@ -262,15 +262,15 @@ basicOps =
   , rre2op $ ldRegFromReg setL a               -- LD L,A
 
                                               -- 7x
-  , mme2op $ ldMem2RFromReg h l b             -- LD (HL),B
-  , mme2op $ ldMem2RFromReg h l c             -- LD (HL),C
-  , mme2op $ ldMem2RFromReg h l d             -- LD (HL),D
-  , mme2op $ ldMem2RFromReg h l e             -- LD (HL),E
+  , mme2op $ ldMem2RFromReg hl b             -- LD (HL),B
+  , mme2op $ ldMem2RFromReg hl c             -- LD (HL),C
+  , mme2op $ ldMem2RFromReg hl d             -- LD (HL),D
+  , mme2op $ ldMem2RFromReg hl e             -- LD (HL),E
 
-  , mme2op $ ldMem2RFromReg h l h             -- LD (HL),H
-  , mme2op $ ldMem2RFromReg h l l             -- LD (HL),L
+  , mme2op $ ldMem2RFromReg hl h             -- LD (HL),H
+  , mme2op $ ldMem2RFromReg hl l             -- LD (HL),L
   , ss2op $ halt                              -- HALT
-  , mme2op $ ldMem2RFromReg h l a             -- LD (HL),A
+  , mme2op $ ldMem2RFromReg hl a             -- LD (HL),A
 
   , rre2op $ ldRegFromReg setA b               -- LD A,B
   , rre2op $ ldRegFromReg setA c               -- LD A,C

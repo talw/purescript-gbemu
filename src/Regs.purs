@@ -24,6 +24,10 @@ foreign import e     :: Regs -> {-Eff (ra :: RegsAccess | e)-} I8
 foreign import h     :: Regs -> {-Eff (ra :: RegsAccess | e)-} I8
 foreign import l     :: Regs -> {-Eff (ra :: RegsAccess | e)-} I8
 foreign import f     :: Regs -> {-Eff (ra :: RegsAccess | e)-} I8
+foreign import af     :: Regs -> {-Eff (ra :: RegsAccess | e)-} I8
+foreign import bc     :: Regs -> {-Eff (ra :: RegsAccess | e)-} I8
+foreign import de     :: Regs -> {-Eff (ra :: RegsAccess | e)-} I8
+foreign import hl     :: Regs -> {-Eff (ra :: RegsAccess | e)-} I8
 foreign import brTkn     :: Regs -> {-Eff (ra :: RegsAccess | e)-} Boolean
 
 foreign import setPC    :: forall e. I16 -> Regs -> Eff (ma :: MemAccess | e) Regs
@@ -56,6 +60,7 @@ cleanRegs = do
   setL  0x4D   regs
   setF  0xB0   regs
   setBrTkn false regs
+  {--return $ trace (regsStr regs) \_ -> regs--}
   return regs
 
 {--Regs--}
@@ -87,18 +92,19 @@ cleanSavedRegs =
 --Debug functions
 
 regsStr :: Regs -> String
-regsStr regs = "af: "    ++ af
-          ++ "\nbc: "    ++ bc
-          ++ "\nde: "    ++ de
-          ++ "\nhl: "    ++ hl
-          ++ "\nsp: "    ++ spVal
-          ++ "\npc: "    ++ pcVal
+regsStr regs = "af: "    ++ af'
+          ++ "\nbc: "    ++ bc'
+          ++ "\nde: "    ++ de'
+          ++ "\nhl: "    ++ hl'
+          ++ "\nsp: "    ++ sp'
+          ++ "\npc: "    ++ pc'
           ++ "\nbrTkn: " ++ show (brTkn regs)
  where
-  af = toHexStr 4 $ joinRegs a f regs
-  bc = toHexStr 4 $ joinRegs b c regs
-  de = toHexStr 4 $ joinRegs d e regs
-  hl = toHexStr 4 $ joinRegs h l regs
-  spVal = toHexStr 4 $ (sp regs)
-  pcVal = toHexStr 4 $ (pc regs)
-  joinRegs msByteReg lsByteReg regs = (msByteReg regs `shl` 8) + lsByteReg regs
+  af' = toHexStr 4 $ af regs
+  {--af = toHexStr 4 $ joinRegs a f regs--}
+  bc' = toHexStr 4 $ bc regs
+  de' = toHexStr 4 $ de regs
+  hl' = toHexStr 4 $ hl regs
+  sp' = toHexStr 4 $ sp regs
+  pc' = toHexStr 4 $ pc regs
+  {--joinRegs msByteReg lsByteReg regs = (msByteReg regs `shl` 8) + lsByteReg regs--}

@@ -113,6 +113,7 @@ foreign import data RegsAccess :: !
   {--}--}
 
 type GetReg = Regs -> I8
+type GetDblReg = Regs -> I16
 type SetReg = forall e. I8 -> Regs -> Eff (ma :: MemAccess | e) Regs
 
 type SavedRegs =
